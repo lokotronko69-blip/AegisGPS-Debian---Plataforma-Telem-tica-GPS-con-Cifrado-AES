@@ -155,8 +155,13 @@ def read_geoip_fallback():
 def encrypt_aes_payload(telemetry_dict, custom_key_hex=None):
     plaintext = json.dumps(telemetry_dict).encode("utf-8")
     iv = os.urandom(12)
-    k_hex = custom_key_hex or AES_KEY_HEX
-    k_bytes = bytes.fromhex(k_hex)
+    k_hex = (custom_key_hex or AES_KEY_HEX).strip()
+    try:
+        k_bytes = bytes.fromhex(k_hex)
+        if len(k_bytes) != 32:
+            k_bytes = hashlib.sha256(k_hex.encode("utf-8")).digest()
+    except Exception:
+        k_bytes = hashlib.sha256(k_hex.encode("utf-8")).digest()
     if HAS_CRYPTOGRAPHY:
         cipher_engine = AESGCM(k_bytes)
         encrypted = cipher_engine.encrypt(iv, plaintext, None)
@@ -216,7 +221,7 @@ def init_local_platform():
             "model": "Teltonika FMB920 · Debian Gateway",
             "vehicleType": "patrol",
             "protocol": "teltonika-codec8",
-            "aesKeyHex": "8f4b2e91c7a6d5034918273645566778899aabbccddeeff00112233445566778",
+            "aesKeyHex": "8f4b2e91c7a6d5034918273645566778899aabbccddeeff00112233445566770",
             "speedLimit": 80,
             "status": "moving",
             "color": "#06b6d4",
@@ -1078,7 +1083,12 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         stateData.geofences.forEach(g => {
           const d = document.createElement('div');
           d.className = 'p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between';
-          d.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + g.color + '"></span>' + g.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-0.5">Radio: ' + g.radius + 'm · Límite: ' + g.speedLimit + ' km/h</div></div><button onclick="deleteGeofence(\'' + g.id + '\')" class="px-2 py-1 rounded bg-rose-950/60 text-rose-300 text-xs hover:bg-rose-900">Eliminar</button>';
+          d.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + g.color + '"></span>' + g.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-0.5">Radio: ' + g.radius + 'm · Límite: ' + g.speedLimit + ' km/h</div></div>';
+          const delBtn = document.createElement('button');
+          delBtn.className = 'px-2 py-1 rounded bg-rose-950/60 text-rose-300 text-xs hover:bg-rose-900';
+          delBtn.textContent = 'Eliminar';
+          delBtn.onclick = () => deleteGeofence(g.id);
+          d.appendChild(delBtn);
           geoList.appendChild(d);
         });
       }
