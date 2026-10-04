@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Header } from './components/Header';
+import { Header, AppTab } from './components/Header';
 import { DeviceSidebar } from './components/DeviceSidebar';
 import { MapView } from './components/MapView';
 import { CryptoInspectorModal } from './components/CryptoInspectorModal';
@@ -9,6 +9,7 @@ import { DebianIntegrationModal } from './components/DebianIntegrationModal';
 import { TelemetryTesterModal } from './components/TelemetryTesterModal';
 import { DeviceRegistrationModal } from './components/DeviceRegistrationModal';
 import { DeviceConnectorHubModal } from './components/DeviceConnectorHubModal';
+import { CommandCenterModal } from './components/CommandCenterModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { 
   GpsDevice, 
@@ -31,7 +32,7 @@ export default function App() {
   const [stats, setStats] = useState<TelemetryStats | null>(null);
 
   // App Navigation & Modals State
-  const [currentTab, setCurrentTab] = useState<'map' | 'crypto' | 'geofences' | 'debian' | 'simulation'>('map');
+  const [currentTab, setCurrentTab] = useState<AppTab>('map');
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isConnectorHubOpen, setIsConnectorHubOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -243,7 +244,71 @@ export default function App() {
     };
   }, [audioEnabled]);
 
-  // Handle Real GPS Hardware Geolocation
+  // Auto-detect & relay local Kali/Debian daemon on 127.0.0.1:8765 if active
+  useEffect(() => {
+    let bridgeInterval: NodeJS.Timeout | null = null;
+    let isCancelled = false;
+
+    async function probeAndRelayLocalDaemon() {
+      try {
+        const res = await fetch('http://127.0.0.1:8765/telemetry');
+        if (!res.ok || isCancelled) return;
+        const pkt = await res.json();
+        if (pkt && pkt.iv && pkt.ciphertext) {
+          await fetch('/api/gps/encrypted-aes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deviceId: pkt.deviceId || 'dev-debian-patrol-04',
+              hostname: pkt.hostname,
+              algorithm: pkt.algorithm || 'AES-256-GCM',
+              transport: 'HTTPS',
+              iv: pkt.iv,
+              ciphertext: pkt.ciphertext,
+              authTag: pkt.authTag,
+            }),
+          });
+
+          if (!bridgeInterval && !isCancelled) {
+            bridgeInterval = setInterval(async () => {
+              try {
+                const r = await fetch('http://127.0.0.1:8765/telemetry');
+                if (r.ok) {
+                  const p = await r.json();
+                  await fetch('/api/gps/encrypted-aes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      deviceId: p.deviceId || 'dev-debian-patrol-04',
+                      hostname: p.hostname,
+                      algorithm: p.algorithm || 'AES-256-GCM',
+                      transport: 'HTTPS',
+                      iv: p.iv,
+                      ciphertext: p.ciphertext,
+                      authTag: p.authTag,
+                    }),
+                  });
+                }
+              } catch {
+                // ignore transient local bridge error
+              }
+            }, 3000);
+          }
+        }
+      } catch {
+        // Local daemon not running on 127.0.0.1:8765 yet
+      }
+    }
+
+    probeAndRelayLocalDaemon();
+
+    return () => {
+      isCancelled = true;
+      if (bridgeInterval) clearInterval(bridgeInterval);
+    };
+  }, []);
+
+  // Handle Real GPS Hardware Geolocation (with automatic Kali Linux / GeoIP fallback)
   const handleToggleRealGps = async () => {
     if (realGpsActive) {
       if (geoWatchIdRef.current !== null) {
@@ -254,21 +319,18 @@ export default function App() {
       return;
     }
 
-    if (!('geolocation' in navigator)) {
-      alert('Tu navegador o dispositivo no soporta geolocalización GNSS');
-      return;
-    }
-
-    // Register real device if not already in fleet
+    // Register real device or sync existing AES key
     const realDeviceId = 'dev-real-gps-user';
     const existing = devices.find((d) => d.id === realDeviceId || d.imei === '869910293847561');
-    if (!existing) {
+    if (existing && existing.aesKeyHex) {
+      realDeviceKeyRef.current = existing.aesKeyHex;
+    } else {
       try {
         const realDev: Partial<GpsDevice> = {
           id: realDeviceId,
           name: 'Mi Dispositivo Real (Local GNSS)',
           imei: '869910293847561',
-          model: 'Navegador Web / Dispositivo Físico',
+          model: 'Navegador Web / Nodo Físico',
           vehicleType: 'person',
           protocol: 'aes-encrypted-json',
           aesKeyHex: realDeviceKeyRef.current,
@@ -281,65 +343,101 @@ export default function App() {
       }
     }
 
-    // Start watching real position
+    const transmitEncryptedCoords = async (lat: number, lng: number, accuracy = 15, speedKmh = 0, heading = 0, battery = 100) => {
+      setRealLocationCoords({ lat, lng, accuracy });
+      const payloadObj = {
+        deviceId: realDeviceId,
+        latitude: lat,
+        longitude: lng,
+        altitude: 450,
+        speed: speedKmh,
+        heading,
+        satellites: 18,
+        hdop: 0.6,
+        battery,
+        ignition: true,
+        tamper: false,
+        sos: false,
+        timestamp: new Date().toISOString(),
+      };
+      try {
+        const encrypted = await encryptAes256Gcm(
+          JSON.stringify(payloadObj),
+          realDeviceKeyRef.current
+        );
+        await fetch('/api/gps/encrypted-aes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: realDeviceId,
+            ciphertext: encrypted.ciphertextHex,
+            iv: encrypted.ivHex,
+            authTag: encrypted.authTagHex,
+            algorithm: 'AES-256-GCM',
+            transport: 'HTTPS',
+          }),
+        });
+      } catch (err) {
+        console.error('Error transmitiendo ubicación real cifrada:', err);
+      }
+    };
+
+    const runDesktopFallback = async () => {
+      try {
+        // 1. Try local Kali/Debian daemon on 127.0.0.1:8765 first
+        const localRes = await fetch('http://127.0.0.1:8765/telemetry');
+        if (localRes.ok) {
+          const pkt = await localRes.json();
+          const t = pkt.telemetryPreview;
+          if (t && typeof t.latitude === 'number') {
+            await transmitEncryptedCoords(t.latitude, t.longitude, 10, t.speed || 35, t.heading || 90, t.battery || 95);
+            return;
+          }
+        }
+      } catch {
+        // fallback to HTTPS GeoIP
+      }
+      try {
+        const geoRes = await fetch('https://get.geojs.io/v1/ip/geo.json');
+        if (geoRes.ok) {
+          const geoData = await geoRes.json();
+          const lat = parseFloat(geoData.latitude);
+          const lng = parseFloat(geoData.longitude);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            await transmitEncryptedCoords(lat, lng, 25, 0, 0, 100);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
     setRealGpsActive(true);
+
+    if (!('geolocation' in navigator)) {
+      await runDesktopFallback();
+      return;
+    }
+
     geoWatchIdRef.current = navigator.geolocation.watchPosition(
       async (pos) => {
-        const coords = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        };
-        setRealLocationCoords(coords);
-
-        // Prepare telemetry packet
-        const payloadObj = {
-          deviceId: realDeviceId,
-          latitude: coords.lat,
-          longitude: coords.lng,
-          altitude: pos.coords.altitude || 650,
-          speed: pos.coords.speed ? pos.coords.speed * 3.6 : 0,
-          heading: pos.coords.heading || 0,
-          satellites: 18,
-          hdop: 0.6,
-          battery: 100,
-          ignition: true,
-          tamper: false,
-          sos: false,
-          timestamp: new Date().toISOString(),
-        };
-
-        // Encrypt with AES-256-GCM
-        try {
-          const encrypted = await encryptAes256Gcm(
-            JSON.stringify(payloadObj),
-            realDeviceKeyRef.current
-          );
-
-          await fetch('/api/gps/encrypted-aes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              deviceId: realDeviceId,
-              ciphertext: encrypted.ciphertextHex,
-              iv: encrypted.ivHex,
-              authTag: encrypted.authTagHex,
-              algorithm: 'AES-256-GCM',
-              transport: 'HTTPS',
-            }),
-          });
-        } catch (err) {
-          console.error('Error transmitiendo ubicación real cifrada:', err);
-        }
+        await transmitEncryptedCoords(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          pos.coords.accuracy,
+          pos.coords.speed ? pos.coords.speed * 3.6 : 0,
+          pos.coords.heading || 0,
+          100
+        );
       },
-      (err) => {
-        console.warn('Geolocation error:', err.message);
-        setRealGpsActive(false);
+      async () => {
+        // Fallback for Kali Linux / Desktop browsers without OS Geoclue service
+        await runDesktopFallback();
       },
       {
         enableHighAccuracy: true,
         maximumAge: 2000,
-        timeout: 10000,
+        timeout: 6000,
       }
     );
   };
@@ -537,6 +635,17 @@ export default function App() {
         onClose={() => setCurrentTab('map')}
         devices={devices}
         selectedDevice={selectedDevice}
+      />
+
+      <CommandCenterModal
+        isOpen={currentTab === 'commands'}
+        onClose={() => setCurrentTab('map')}
+        tcpPort={stats?.tcpPort || 5023}
+        onOpenTab={(tab) => setCurrentTab(tab)}
+        onToggleRealGps={handleToggleRealGps}
+        realGpsActive={realGpsActive}
+        onToggleSimulation={handleToggleSimulation}
+        simulationRunning={stats?.simulationRunning}
       />
 
       <HistoryPlaybackModal

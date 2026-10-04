@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Radio, 
   Send, 
@@ -31,9 +31,9 @@ export const TelemetryTesterModal: React.FC<TelemetryTesterModalProps> = ({
   const [targetDeviceId, setTargetDeviceId] = useState<string>(
     selectedDevice?.id || devices[0]?.id || ''
   );
-  const [lat, setLat] = useState('40.4168');
-  const [lng, setLng] = useState('-3.7038');
-  const [altitude, setAltitude] = useState('650');
+  const [lat, setLat] = useState('42.8150');
+  const [lng, setLng] = useState('-1.6425');
+  const [altitude, setAltitude] = useState('450');
   const [speed, setSpeed] = useState('85');
   const [heading, setHeading] = useState('90');
   const [satellites, setSatellites] = useState('16');
@@ -45,6 +45,17 @@ export const TelemetryTesterModal: React.FC<TelemetryTesterModalProps> = ({
 
   const [isSending, setIsSending] = useState(false);
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const dev = selectedDevice || devices[0];
+    if (dev) {
+      setTargetDeviceId(dev.id);
+      if (dev.lastPosition) {
+        setLat(dev.lastPosition.latitude.toFixed(6));
+        setLng(dev.lastPosition.longitude.toFixed(6));
+      }
+    }
+  }, [selectedDevice, devices.length, isOpen]);
 
   if (!isOpen) return null;
 

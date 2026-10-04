@@ -959,6 +959,12 @@ app.post('/api/gps/encrypted-aes', (req: Request, res: Response) => {
     return;
   }
 
+  const reportedHost = (parsed.hostname as string) || (req.body.hostname as string);
+  if (reportedHost && device.id === 'dev-debian-patrol-04') {
+    device.name = `Nodo Kali/Debian (${reportedHost})`;
+    device.model = `Linux Host (${reportedHost}) · AES-256-GCM`;
+  }
+
   const logEntry: CryptoPacketLog = {
     id: `log-incoming-${Date.now()}`,
     deviceId: device.id,

@@ -8,13 +8,16 @@ import {
   Pause, 
   Bell, 
   Plus, 
-  Terminal
+  Terminal,
+  Command
 } from 'lucide-react';
 import { TelemetryStats } from '../types/gps';
 
+export type AppTab = 'map' | 'crypto' | 'geofences' | 'debian' | 'simulation' | 'commands';
+
 interface HeaderProps {
-  currentTab: 'map' | 'crypto' | 'geofences' | 'debian' | 'simulation';
-  onSelectTab: (tab: 'map' | 'crypto' | 'geofences' | 'debian' | 'simulation') => void;
+  currentTab: AppTab;
+  onSelectTab: (tab: AppTab) => void;
   stats: TelemetryStats | null;
   audioEnabled: boolean;
   onToggleAudio: () => void;
@@ -126,6 +129,18 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Radio className="w-3.5 h-3.5" />
           <span>Inyector de Telemetría</span>
+        </button>
+
+        <button
+          onClick={() => onSelectTab('commands')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+            currentTab === 'commands'
+              ? 'bg-slate-800 text-cyan-400 border border-slate-700'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <Command className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Comandos & CLI</span>
         </button>
       </nav>
 

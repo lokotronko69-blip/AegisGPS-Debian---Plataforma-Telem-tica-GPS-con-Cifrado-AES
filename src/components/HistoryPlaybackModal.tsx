@@ -224,7 +224,12 @@ export const HistoryPlaybackModal: React.FC<HistoryPlaybackModalProps> = ({
               </button>
 
               <button
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={() => {
+                  if (!isPlaying && currentIndex >= historyPositions.length - 1) {
+                    setCurrentIndex(0);
+                  }
+                  setIsPlaying(!isPlaying);
+                }}
                 className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow-sm"
               >
                 {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
