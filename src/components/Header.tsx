@@ -9,9 +9,12 @@ import {
   Bell, 
   Plus, 
   Terminal,
-  Command
+  Command,
+  Radar,
+  ArrowUpCircle
 } from 'lucide-react';
 import { TelemetryStats } from '../types/gps';
+import { AEGIS_APP_VERSION } from '../utils/debianScripts';
 
 export type AppTab = 'map' | 'crypto' | 'geofences' | 'debian' | 'simulation' | 'commands';
 
@@ -26,6 +29,9 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   onOpenRegisterDevice: () => void;
   onOpenConnectorHub: () => void;
+  onOpenScanner: () => void;
+  onOpenUpdater: () => void;
+  updateAvailable?: boolean;
   connectedSse: boolean;
 }
 
@@ -40,6 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNotifications,
   onOpenRegisterDevice,
   onOpenConnectorHub,
+  onOpenScanner,
+  onOpenUpdater,
+  updateAvailable,
   connectedSse,
 }) => {
   return (
@@ -196,6 +205,33 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
+        {/* OTA Update / Version Button */}
+        <button
+          onClick={onOpenUpdater}
+          className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+            updateAvailable
+              ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-500/60 text-amber-300 shadow-sm'
+              : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-emerald-400'
+          }`}
+          title="Actualizar aplicación y nodo local a la última versión disponible"
+        >
+          <ArrowUpCircle className={`w-3.5 h-3.5 ${updateAvailable ? 'animate-bounce text-amber-400' : 'text-emerald-400'}`} />
+          <span className="hidden sm:inline">Actualizar v{AEGIS_APP_VERSION}</span>
+          {updateAvailable && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+          )}
+        </button>
+
+        {/* Scan Nearby GPS Button */}
+        <button
+          onClick={onOpenScanner}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/50 text-cyan-300 font-bold text-xs rounded-lg transition-all shadow-sm"
+          title="Escanear dispositivos GPS, balizas RF, Teltonika y receptores cercanos"
+        >
+          <Radar className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+          <span>Escanear GPS Cercanos</span>
+        </button>
+
         {/* Connect Real Devices Wizard CTA */}
         <button
           onClick={onOpenConnectorHub}
@@ -203,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
           title="Conectar smartphones, localizadores de coche, Teltonika o Raspberry Pi"
         >
           <Radio className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>Conectar Dispositivos</span>
+          <span className="hidden xl:inline">Conectar Dispositivos</span>
         </button>
 
         {/* New Device CTA */}

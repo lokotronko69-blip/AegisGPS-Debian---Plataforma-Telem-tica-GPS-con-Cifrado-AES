@@ -15,7 +15,8 @@ import {
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   MapPin,
-  Compass
+  Compass,
+  Radar
 } from 'lucide-react';
 import { GpsDevice, DeviceStatus } from '../types/gps';
 
@@ -29,6 +30,7 @@ interface DeviceSidebarProps {
   onToggleCollapse: () => void;
   realGpsActive?: boolean;
   onToggleRealGps?: () => void;
+  onOpenScanner?: () => void;
 }
 
 export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
@@ -41,6 +43,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
   onToggleCollapse,
   realGpsActive,
   onToggleRealGps,
+  onOpenScanner,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'moving' | 'idle' | 'stopped'>('all');
@@ -127,6 +130,17 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
             </span>
           </button>
         )}
+
+        {onOpenScanner && (
+          <button
+            onClick={onOpenScanner}
+            className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-cyan-500/50 text-cyan-300 shadow-2xl backdrop-blur-md transition-all flex items-center gap-2"
+            title="Escanear dispositivos GPS cercanos"
+          >
+            <Radar className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <span className="text-xs font-semibold">Escanear GPS Cercanos</span>
+          </button>
+        )}
       </div>
     );
   }
@@ -155,9 +169,9 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
         </button>
       </div>
 
-      {/* Real Device Hardware GNSS Connect Button */}
-      {onToggleRealGps && (
-        <div className="px-3 pt-2.5">
+      {/* Real Device Hardware GNSS Connect + Scan Nearby GPS Buttons */}
+      <div className="px-3 pt-2.5 space-y-2">
+        {onToggleRealGps && (
           <button
             onClick={onToggleRealGps}
             className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all shadow-sm ${
@@ -175,8 +189,23 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
               {realGpsActive ? 'ACTIVO' : 'CONECTAR'}
             </span>
           </button>
-        </div>
-      )}
+        )}
+
+        {onOpenScanner && (
+          <button
+            onClick={onOpenScanner}
+            className="w-full py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between transition-all shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Radar className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <span>Escanear GPS Cercanos (Radar RF / BLE)</span>
+            </div>
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+              ESCANEAR
+            </span>
+          </button>
+        )}
+      </div>
 
       {/* Search and Filters Header */}
       <div className="p-3 border-b border-slate-800/80 space-y-2.5">

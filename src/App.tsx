@@ -10,6 +10,8 @@ import { TelemetryTesterModal } from './components/TelemetryTesterModal';
 import { DeviceRegistrationModal } from './components/DeviceRegistrationModal';
 import { DeviceConnectorHubModal } from './components/DeviceConnectorHubModal';
 import { CommandCenterModal } from './components/CommandCenterModal';
+import { NearbyGpsScannerModal } from './components/NearbyGpsScannerModal';
+import { SystemUpdateModal } from './components/SystemUpdateModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { 
   GpsDevice, 
@@ -21,6 +23,7 @@ import {
 } from './types/gps';
 import { playAlertSound } from './utils/audio';
 import { encryptAes256Gcm, generateAes256KeyHex } from './utils/crypto';
+import { AEGIS_APP_VERSION } from './utils/debianScripts';
 
 export default function App() {
   const [devices, setDevices] = useState<GpsDevice[]>([]);
@@ -35,6 +38,9 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<AppTab>('map');
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isConnectorHubOpen, setIsConnectorHubOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isUpdaterOpen, setIsUpdaterOpen] = useState(false);
+  const [localUpdateAvailable, setLocalUpdateAvailable] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyTargetDevice, setHistoryTargetDevice] = useState<GpsDevice | null>(null);
@@ -254,6 +260,11 @@ export default function App() {
         const res = await fetch('http://127.0.0.1:8765/telemetry');
         if (!res.ok || isCancelled) return;
         const pkt = await res.json();
+        if (pkt && pkt.version !== AEGIS_APP_VERSION) {
+          setLocalUpdateAvailable(true);
+        } else {
+          setLocalUpdateAvailable(false);
+        }
         if (pkt && pkt.iv && pkt.ciphertext) {
           await fetch('/api/gps/encrypted-aes', {
             method: 'POST',
@@ -555,6 +566,9 @@ export default function App() {
           onOpenNotifications={() => setIsNotificationsOpen(true)}
           onOpenRegisterDevice={() => setIsRegisterOpen(true)}
           onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
+          onOpenScanner={() => setIsScannerOpen(true)}
+          onOpenUpdater={() => setIsUpdaterOpen(true)}
+          updateAvailable={localUpdateAvailable}
           connectedSse={connectedSse}
         />
       </div>
@@ -574,6 +588,7 @@ export default function App() {
             onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
             realGpsActive={realGpsActive}
             onToggleRealGps={handleToggleRealGps}
+            onOpenScanner={() => setIsScannerOpen(true)}
           />
         </div>
 
@@ -659,6 +674,42 @@ export default function App() {
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
         onRegisterDevice={handleRegisterDevice}
+      />
+
+      {/* OTA System & Local Kali Daemon Updater Modal */}
+      <SystemUpdateModal
+        isOpen={isUpdaterOpen}
+        onClose={() => setIsUpdaterOpen(false)}
+        onRefreshState={fetchData}
+      />
+
+      {/* Nearby GPS Proximity Scanner Modal */}
+      <NearbyGpsScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        centerLat={
+          realLocationCoords?.lat ||
+          selectedDevice?.lastPosition?.latitude ||
+          devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition?.latitude ||
+          42.8150
+        }
+        centerLng={
+          realLocationCoords?.lng ||
+          selectedDevice?.lastPosition?.longitude ||
+          devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition?.longitude ||
+          -1.6425
+        }
+        devices={devices}
+        onDeviceConnected={(connectedDevs, focusDev) => {
+          setDevices((prev) => {
+            const map = new Map<string, GpsDevice>(prev.map((d) => [d.id, d]));
+            connectedDevs.forEach((cd) => map.set(cd.id, cd));
+            return Array.from(map.values());
+          });
+          if (focusDev) {
+            setSelectedDevice(focusDev);
+          }
+        }}
       />
 
       {/* Universal Device Connector Hub Modal */}

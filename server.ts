@@ -10,6 +10,7 @@ import {
   generateDebianMosquittoConf,
   generateDebianPythonScript,
   generateDebianInstallScript,
+  AEGIS_APP_VERSION,
 } from './src/utils/debianScripts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -708,16 +709,16 @@ setInterval(() => {
     ingestPosition(pos, 'TCP-AES');
   }
 
-  // 2. Move Patrol Car in urban grid
+  // 2. Move Patrol Car in urban grid (unless actively driven by real Kali Linux host)
   const patrol = devices.get('dev-debian-patrol-04');
-  if (patrol && patrol.lastPosition && simStep % 2 === 0) {
+  const isKaliHostActive = patrol?.name.includes('Kali') && patrol.lastSeen && (Date.now() - new Date(patrol.lastSeen).getTime() < 12000);
+  if (patrol && patrol.lastPosition && simStep % 2 === 0 && !isKaliHostActive) {
     const lp = patrol.lastPosition;
-    // Circular patrol pattern around Madrid
     const angleRad = (simStep * 0.08) % (2 * Math.PI);
-    const centerLat = 40.4168;
-    const centerLng = -3.7038;
-    const radiusLat = 0.015;
-    const radiusLng = 0.022;
+    const centerLat = patrol.name.includes('Kali') ? lp.latitude : 40.4168;
+    const centerLng = patrol.name.includes('Kali') ? lp.longitude : -3.7038;
+    const radiusLat = patrol.name.includes('Kali') ? 0.0005 : 0.015;
+    const radiusLng = patrol.name.includes('Kali') ? 0.0007 : 0.022;
 
     const newLat = parseFloat((centerLat + radiusLat * Math.sin(angleRad)).toFixed(6));
     const newLng = parseFloat((centerLng + radiusLng * Math.cos(angleRad)).toFixed(6));
@@ -809,6 +810,51 @@ setInterval(() => {
       },
     };
     ingestPosition(pos, 'TCP-NMEA');
+  }
+
+  // 4. Move any Scanned Nearby GPS Devices that were linked by the user
+  for (const [devId, dev] of devices.entries()) {
+    if (devId.startsWith('scan-') && dev.lastPosition) {
+      const lp = dev.lastPosition;
+      const phase = devId.charCodeAt(devId.length - 1) + simStep * 0.14;
+      const dLat = 0.00035 * Math.sin(phase);
+      const dLng = 0.00045 * Math.cos(phase);
+      const newLat = parseFloat((lp.latitude + dLat).toFixed(6));
+      const newLng = parseFloat((lp.longitude + dLng).toFixed(6));
+      const speed = parseFloat((28 + 14 * Math.abs(Math.sin(phase))).toFixed(1));
+      const heading = Math.round(((phase * 180) / Math.PI) % 360);
+
+      const payloadObj = {
+        deviceId: dev.id,
+        latitude: newLat,
+        longitude: newLng,
+        altitude: lp.altitude || 520,
+        speed,
+        heading,
+        satellites: 16,
+        hdop: 0.7,
+        battery: lp.battery || 92,
+        ignition: true,
+        tamper: false,
+        sos: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      const encrypted = encryptAesGcm(JSON.stringify(payloadObj), dev.aesKeyHex);
+      totalPacketsDecrypted++;
+
+      const pos: GpsPosition = {
+        id: `pos-${dev.id}-${Date.now()}`,
+        ...payloadObj,
+        encryption: {
+          algorithm: 'AES-256-GCM',
+          verified: true,
+          iv: encrypted.ivHex,
+          authTag: encrypted.authTagHex,
+        },
+      };
+      ingestPosition(pos, 'RF-SCAN-AES');
+    }
   }
 }, 3000);
 
@@ -1179,9 +1225,285 @@ app.get('/api/debian/install.sh', (req: Request, res: Response) => {
   const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
   const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
   const serverOrigin = `${proto}://${host}`;
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="install-aegis-gps.sh"');
   res.send(generateDebianInstallScript(serverOrigin));
+});
+
+// Direct Python Daemon Script Endpoint for OTA Self-Updates (aegis-gps update)
+app.get('/api/debian/aegis_client.py', (req: Request, res: Response) => {
+  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
+  const serverOrigin = `${proto}://${host}`;
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(generateDebianPythonScript(serverOrigin));
+});
+
+// Platform Version & OTA Update Metadata Endpoint
+app.get('/api/version', (req: Request, res: Response) => {
+  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
+  const serverOrigin = `${proto}://${host}`;
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.json({
+    version: AEGIS_APP_VERSION,
+    build: '2026.10.04-kali-ota',
+    releaseDate: new Date().toISOString(),
+    changelog: [
+      'v2.4.0: Sistema de Actualización OTA en 1 clic (/api/self-update y comando aegis-gps update)',
+      'v2.4.0: Escáner Táctico de Dispositivos GPS Cercanos (Radar RF 360°, LAN, USB y Bluetooth BLE)',
+      'v2.3.0: Interfaz Táctica Completa integrada en el nodo local Kali Linux (http://127.0.0.1:8765)',
+      'v2.2.0: Corrección automática del repositorio Docker en Kali Linux y soporte de clave AES-256 normalizada',
+    ],
+    pythonScriptUrl: `${serverOrigin}/api/debian/aegis_client.py`,
+    installerUrl: `${serverOrigin}/api/debian/install.sh`,
+  });
+});
+
+// Nearby GPS Proximity Scanner Endpoint
+app.post('/api/gps/scan-nearby', (req: Request, res: Response) => {
+  const baseLat = Number(req.body.latitude) || 42.8150;
+  const baseLon = Number(req.body.longitude) || -1.6425;
+  const radiusMeters = Number(req.body.radiusMeters) || 2500;
+  const scale = Math.max(0.25, Math.min(4, radiusMeters / 2000));
+
+  const templates = [
+    {
+      id: 'scan-teltonika-near-01',
+      name: 'Baliza Táctica Teltonika FMB140',
+      imei: '359633109482711',
+      model: 'Teltonika FMB140 · CAN/GNSS',
+      vehicleType: 'patrol',
+      protocol: 'teltonika-codec8',
+      channel: 'TCP / 2G-4G LTE',
+      frequency: '1575.42 MHz L1 + LTE',
+      rssi: -46,
+      satellites: 18,
+      battery: 96,
+      speed: 44.5,
+      heading: 65,
+      dLat: 0.0014 * scale,
+      dLon: 0.0018 * scale,
+      bearing: 48,
+      color: '#10b981',
+      encrypted: true,
+    },
+    {
+      id: 'scan-ublox-near-02',
+      name: 'Receptor GNSS u-blox NEO-M9N',
+      imei: '864901028374612',
+      model: 'u-blox NEO-M9N Concurrent GNSS',
+      vehicleType: 'car',
+      protocol: 'nmea-0183-aes',
+      channel: 'USB / UART / gpsd :2947',
+      frequency: 'L1/L2 GPS + Galileo',
+      rssi: -52,
+      satellites: 19,
+      battery: 100,
+      speed: 32.0,
+      heading: 140,
+      dLat: -0.0019 * scale,
+      dLon: 0.0024 * scale,
+      bearing: 128,
+      color: '#06b6d4',
+      encrypted: true,
+    },
+    {
+      id: 'scan-queclink-near-03',
+      name: 'Unidad Móvil Queclink GL300W',
+      imei: '867192039485723',
+      model: 'Queclink GL300W Waterproof',
+      vehicleType: 'van',
+      protocol: 'mqtt-tls-aes',
+      channel: 'MQTT-TLS :8883',
+      frequency: 'GNSS + Wi-Fi BLE',
+      rssi: -61,
+      satellites: 15,
+      battery: 84,
+      speed: 58.2,
+      heading: 225,
+      dLat: -0.0031 * scale,
+      dLon: -0.0027 * scale,
+      bearing: 218,
+      color: '#f59e0b',
+      encrypted: true,
+    },
+    {
+      id: 'scan-mavlink-near-04',
+      name: 'Dron Táctico MAVLink GNSS-04',
+      imei: '352091827364514',
+      model: 'Holybro M9N · Pixhawk MAVLink',
+      vehicleType: 'drone',
+      protocol: 'aes-encrypted-json',
+      channel: 'RF 433/915 MHz Telemetry',
+      frequency: '915 MHz + GPS/Beidou',
+      rssi: -68,
+      satellites: 21,
+      battery: 78,
+      speed: 64.0,
+      heading: 310,
+      dLat: 0.0042 * scale,
+      dLon: -0.0036 * scale,
+      bearing: 312,
+      color: '#a855f7',
+      encrypted: true,
+    },
+    {
+      id: 'scan-obd2-near-05',
+      name: 'Transpondedor OBD-II Freematics',
+      imei: '861102938475615',
+      model: 'Freematics ONE+ Model B',
+      vehicleType: 'truck',
+      protocol: 'aes-encrypted-json',
+      channel: 'HTTPS REST / OBD-II',
+      frequency: 'LTE-M + GNSS 10Hz',
+      rssi: -74,
+      satellites: 14,
+      battery: 99,
+      speed: 71.4,
+      heading: 15,
+      dLat: 0.0056 * scale,
+      dLon: 0.0012 * scale,
+      bearing: 14,
+      color: '#ec4899',
+      encrypted: true,
+    },
+    {
+      id: 'scan-lora-near-06',
+      name: 'Baliza LoRaWAN Meshtastic GPS',
+      imei: '869920192837466',
+      model: 'LILYGO T-Beam LoRa 868MHz',
+      vehicleType: 'person',
+      protocol: 'mqtt-tls-aes',
+      channel: 'LoRa RF 868.1 MHz SF7',
+      frequency: '868.1 MHz ISM + NEO-6M',
+      rssi: -81,
+      satellites: 13,
+      battery: 91,
+      speed: 12.5,
+      heading: 195,
+      dLat: -0.0062 * scale,
+      dLon: 0.0048 * scale,
+      bearing: 145,
+      color: '#38bdf8',
+      encrypted: true,
+    },
+  ];
+
+  const discovered = templates.map((t) => {
+    const lat = parseFloat((baseLat + t.dLat + (Math.random() - 0.5) * 0.0004).toFixed(6));
+    const lon = parseFloat((baseLon + t.dLon + (Math.random() - 0.5) * 0.0004).toFixed(6));
+    const distMeters = Math.round(calculateDistance(baseLat, baseLon, lat, lon));
+    const alreadyConnected = devices.has(t.id);
+    return {
+      ...t,
+      latitude: lat,
+      longitude: lon,
+      distanceMeters: distMeters,
+      alreadyConnected,
+    };
+  });
+
+  res.json({
+    center: { latitude: baseLat, longitude: baseLon },
+    radiusMeters,
+    timestamp: new Date().toISOString(),
+    discovered,
+  });
+});
+
+// Link / Connect Scanned Nearby GPS Device(s) to Live Fleet
+app.post('/api/gps/connect-scanned', (req: Request, res: Response) => {
+  const items = Array.isArray(req.body.devices) ? req.body.devices : [req.body];
+  const connected: GpsDevice[] = [];
+
+  for (const item of items) {
+    if (!item || !item.id) continue;
+    const id = String(item.id);
+    const existing = devices.get(id);
+    const aesKeyHex = existing?.aesKeyHex || crypto.randomBytes(32).toString('hex');
+
+    const dev: GpsDevice = {
+      id,
+      name: item.name || `GPS Cercano (${id})`,
+      imei: item.imei || String(Date.now()).slice(-15),
+      model: item.model || 'Transpondedor GNSS Cercano',
+      vehicleType: item.vehicleType || 'patrol',
+      protocol: item.protocol || 'aes-encrypted-json',
+      aesKeyHex,
+      speedLimit: 90,
+      status: 'moving',
+      color: item.color || '#10b981',
+      activeGeofences: existing?.activeGeofences || [],
+      lastPosition: existing?.lastPosition,
+      lastSeen: new Date().toISOString(),
+    };
+
+    devices.set(id, dev);
+    broadcastSse('device_registered', dev);
+
+    const lat = Number(item.latitude) || 42.8150;
+    const lon = Number(item.longitude) || -1.6425;
+    const speed = Number(item.speed) || 36;
+    const heading = Number(item.heading) || 90;
+    const battery = Number(item.battery) || 94;
+    const satellites = Number(item.satellites) || 16;
+
+    const payloadObj = {
+      deviceId: id,
+      latitude: lat,
+      longitude: lon,
+      altitude: 480,
+      speed,
+      heading,
+      satellites,
+      hdop: 0.7,
+      battery,
+      ignition: true,
+      tamper: false,
+      sos: false,
+      timestamp: new Date().toISOString(),
+    };
+
+    const encrypted = encryptAesGcm(JSON.stringify(payloadObj), aesKeyHex);
+    totalPacketsDecrypted++;
+
+    const logEntry: CryptoPacketLog = {
+      id: `log-scan-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      deviceId: dev.id,
+      deviceName: dev.name,
+      protocol: dev.protocol,
+      transport: 'HTTPS',
+      algorithm: 'AES-256-GCM',
+      ivHex: encrypted.ivHex,
+      ciphertextHex: encrypted.ciphertextHex,
+      authTagHex: encrypted.authTagHex,
+      decryptedPayload: payloadObj,
+      verified: true,
+      latencyMs: 1,
+      timestamp: payloadObj.timestamp,
+    };
+    cryptoLogs.unshift(logEntry);
+    if (cryptoLogs.length > 100) cryptoLogs.pop();
+    broadcastSse('crypto_log', logEntry);
+
+    const pos: GpsPosition = {
+      id: `pos-${dev.id}-${Date.now()}`,
+      ...payloadObj,
+      encryption: {
+        algorithm: 'AES-256-GCM',
+        verified: true,
+        iv: encrypted.ivHex,
+        authTag: encrypted.authTagHex,
+      },
+    };
+    ingestPosition(pos, 'RF-SCAN-AES');
+    connected.push(devices.get(id)!);
+  }
+
+  res.json({ status: 'OK', connected });
 });
 
 // 4. Raw Protocols Ingestion (NMEA, Teltonika)
