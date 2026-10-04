@@ -1,0 +1,6 @@
+{
+  "name": "AegisGPS Debian - Plataforma Telemática GPS con Cifrado AES",
+  "description": "Sistema de monitoreo GPS en tiempo real para Debian Linux con cifrado AES-256, ingesta por MQTT/TCP/HTTPS, mapas interactivos y notificaciones instantáneas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
