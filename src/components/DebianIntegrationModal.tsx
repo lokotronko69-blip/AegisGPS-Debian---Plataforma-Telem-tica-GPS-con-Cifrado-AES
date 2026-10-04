@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Terminal, 
   Copy, 
@@ -6,13 +6,20 @@ import {
   X, 
   Server, 
   Radio, 
-  Lock, 
-  Cpu, 
-  Download,
-  ShieldCheck,
-  FileCode,
-  HardDrive
+  Download, 
+  ShieldCheck, 
+  FileCode, 
+  HardDrive,
+  Activity
 } from 'lucide-react';
+import {
+  generateDebianSystemdService,
+  generateDebianMosquittoConf,
+  generateDebianPythonScript,
+  generateDebianInstallScript,
+  generateDebianBase64OneLiner,
+  downloadScriptFile,
+} from '../utils/debianScripts';
 
 interface DebianIntegrationModalProps {
   isOpen: boolean;
@@ -25,23 +32,53 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
   onClose,
   tcpPort,
 }) => {
-  const [activeTab, setActiveTab] = useState<'systemd' | 'python' | 'mqtt' | 'tcp' | 'install'>('systemd');
+  const [activeTab, setActiveTab] = useState<'install' | 'systemd' | 'python' | 'mqtt' | 'tcp'>('install');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [configData, setConfigData] = useState<{
-    systemdService: string;
-    mosquittoConf: string;
-    pythonScript: string;
-    installScript: string;
-  } | null>(null);
+  const [bridgeUrl, setBridgeUrl] = useState('http://127.0.0.1:8765/telemetry');
+  const [bridgeStatus, setBridgeStatus] = useState<'idle' | 'checking' | 'connected' | 'unreachable'>('idle');
+  const [bridgeHostInfo, setBridgeHostInfo] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      fetch('/api/debian/config')
-        .then((res) => res.json())
-        .then((data) => setConfigData(data))
-        .catch((err) => console.error('Failed to load debian config:', err));
+  const serverOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://tu-servidor.run.app';
+
+  const systemdService = generateDebianSystemdService();
+  const mosquittoConf = generateDebianMosquittoConf();
+  const pythonScript = generateDebianPythonScript(serverOrigin);
+  const installScript = generateDebianInstallScript(serverOrigin);
+  const base64OneLiner = generateDebianBase64OneLiner(serverOrigin);
+
+  const checkLocalDebianBridge = async () => {
+    setBridgeStatus('checking');
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(bridgeUrl, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const packet = await res.json();
+        setBridgeStatus('connected');
+        setBridgeHostInfo(
+          `Host Debian: ${packet.hostname || 'debian-node'} · Lat: ${packet.telemetryPreview?.latitude ?? ''} Lon: ${packet.telemetryPreview?.longitude ?? ''}`
+        );
+        // Relay encrypted packet to backend
+        await fetch('/api/gps/encrypted-aes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: packet.deviceId || 'dev-debian-patrol-04',
+            algorithm: packet.algorithm || 'AES-256-GCM',
+            transport: 'HTTPS',
+            iv: packet.iv,
+            ciphertext: packet.ciphertext,
+            authTag: packet.authTag,
+          }),
+        });
+      } else {
+        setBridgeStatus('unreachable');
+      }
+    } catch {
+      setBridgeStatus('unreachable');
     }
-  }, [isOpen]);
+  };
 
   if (!isOpen) return null;
 
@@ -69,7 +106,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Daemon systemd, ingesta TCP en puerto :{tcpPort}, broker MQTT TLS y cifrado AES-256
+                Instalador autónomo Base64 (sin error <code>&lt;!doctype html&gt;</code>), daemon systemd y cifrado AES-256-GCM
               </p>
             </div>
           </div>
@@ -84,6 +121,18 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
 
         {/* Tab Selector */}
         <div className="px-6 pt-3 border-b border-slate-800 flex items-center gap-2 bg-slate-950/50 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('install')}
+            className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+              activeTab === 'install'
+                ? 'border-emerald-400 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Instalador 1-Paso (Base64)</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('systemd')}
             className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
@@ -131,22 +180,124 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
             <HardDrive className="w-3.5 h-3.5" />
             <span>Sockets TCP (Puerto {tcpPort})</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('install')}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'install'
-                ? 'border-cyan-400 text-cyan-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Instalador Automatizado</span>
-          </button>
         </div>
 
         {/* Content Pane */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* TAB 0: AUTOMATED INSTALLER (BASE64 + DIRECT DOWNLOAD) */}
+          {activeTab === 'install' && (
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Instalación Autónoma en 1 Paso para Debian GNU/Linux
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Codificado en Base64 para evitar que proxies en la nube devuelvan HTML (<code>&lt;!doctype html&gt;</code>) al usar <code>curl</code>.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => downloadScriptFile('install-aegis-gps.sh', installScript)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-xs bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-xl transition-colors shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Descargar .sh</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Primary Base64 One-Liner */}
+              <div className="p-4 bg-slate-950 border border-emerald-800/70 rounded-xl space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>1. Copia y pega este comando en tu terminal Debian (ejecución directa sin curl):</span>
+                  </span>
+                  <button
+                    onClick={() => handleCopy(base64OneLiner, 'b64-installer')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg transition-colors shrink-0"
+                  >
+                    {copiedKey === 'b64-installer' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedKey === 'b64-installer' ? '¡Copiado!' : 'Copiar Comando 1-Línea'}</span>
+                  </button>
+                </div>
+
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-lg font-mono text-[11px] text-cyan-300 overflow-x-auto max-h-24 select-all break-all">
+                  <code>{base64OneLiner}</code>
+                </div>
+              </div>
+
+              {/* Local Debian Bridge Status & Verification */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-bold text-slate-200">
+                      Puente Local Debian (Detecta tu servicio <code>aegis-gps</code> en el puerto 8765):
+                    </span>
+                  </div>
+                  <span
+                    className={`text-[11px] font-mono px-2 py-0.5 rounded border ${
+                      bridgeStatus === 'connected'
+                        ? 'bg-emerald-950/90 border-emerald-700 text-emerald-400'
+                        : bridgeStatus === 'checking'
+                        ? 'bg-slate-900 border-slate-700 text-cyan-400'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {bridgeStatus === 'connected'
+                      ? 'CONECTADO AL DAEMON DEBIAN'
+                      : bridgeStatus === 'checking'
+                      ? 'COMPROBANDO...'
+                      : 'ESPERANDO INSTALACIÓN LOCAL'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={bridgeUrl}
+                    onChange={(e) => setBridgeUrl(e.target.value)}
+                    className="flex-1 px-3 py-1.5 text-xs font-mono bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                    placeholder="http://127.0.0.1:8765/telemetry"
+                  />
+                  <button
+                    onClick={checkLocalDebianBridge}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 rounded-lg border border-slate-700 transition-colors"
+                  >
+                    Sincronizar Ahora
+                  </button>
+                </div>
+
+                {bridgeHostInfo && (
+                  <div className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 rounded-lg p-2">
+                    ✓ {bridgeHostInfo} (Cifrado AES-256-GCM verificado)
+                  </div>
+                )}
+              </div>
+
+              {/* Raw Bash Script Preview */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">
+                    Código fuente completo del script Bash (<code>install-aegis-gps.sh</code>):
+                  </span>
+                  <button
+                    onClick={() => handleCopy(installScript, 'raw-installer')}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors"
+                  >
+                    {copiedKey === 'raw-installer' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedKey === 'raw-installer' ? 'Copiado' : 'Copiar Script Bash'}</span>
+                  </button>
+                </div>
+                <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-cyan-300 overflow-x-auto max-h-64 leading-relaxed">
+                  {installScript}
+                </pre>
+              </div>
+            </div>
+          )}
           
           {/* TAB 1: SYSTEMD */}
           {activeTab === 'systemd' && (
@@ -159,7 +310,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={() => handleCopy(configData?.systemdService || '', 'systemd')}
+                  onClick={() => handleCopy(systemdService, 'systemd')}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors"
                 >
                   {copiedKey === 'systemd' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -169,7 +320,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
 
               <div className="relative">
                 <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-cyan-300 overflow-x-auto leading-relaxed">
-                  {configData?.systemdService || 'Cargando...'}
+                  {systemdService}
                 </pre>
               </div>
 
@@ -210,7 +361,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={() => handleCopy(configData?.pythonScript || '', 'python')}
+                  onClick={() => handleCopy(pythonScript, 'python')}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors"
                 >
                   {copiedKey === 'python' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -220,7 +371,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
 
               <div className="relative">
                 <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-slate-200 overflow-x-auto max-h-96 leading-relaxed">
-                  {configData?.pythonScript || 'Cargando script...'}
+                  {pythonScript}
                 </pre>
               </div>
             </div>
@@ -237,7 +388,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={() => handleCopy(configData?.mosquittoConf || '', 'mqtt')}
+                  onClick={() => handleCopy(mosquittoConf, 'mqtt')}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors"
                 >
                   {copiedKey === 'mqtt' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -246,7 +397,7 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
               </div>
 
               <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-amber-300 overflow-x-auto leading-relaxed">
-                {configData?.mosquittoConf || 'Cargando...'}
+                {mosquittoConf}
               </pre>
 
               <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2 text-xs text-slate-300">
@@ -297,31 +448,6 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
                   </pre>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* TAB 5: AUTOMATED INSTALLER */}
-          {activeTab === 'install' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white">Instalador en 1 Paso para Debian GNU/Linux</h3>
-                  <p className="text-xs text-slate-400">
-                    Instala automáticamente paquetes apt requeridos (gpsd, mosquitto, python3-cryptography) y configura el servicio.
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleCopy(configData?.installScript || '', 'installer')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg transition-colors"
-                >
-                  {copiedKey === 'installer' ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
-                  <span>{copiedKey === 'installer' ? 'Copiado' : 'Copiar Script Completo'}</span>
-                </button>
-              </div>
-
-              <pre className="p-4 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-cyan-300 overflow-x-auto leading-relaxed">
-                {configData?.installScript || 'Cargando instalador...'}
-              </pre>
             </div>
           )}
 

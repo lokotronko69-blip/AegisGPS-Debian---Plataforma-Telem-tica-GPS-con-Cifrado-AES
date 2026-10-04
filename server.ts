@@ -5,6 +5,12 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GpsDevice, GpsPosition, Geofence, GpsAlert, CryptoPacketLog, TelemetryStats } from './src/types/gps';
+import {
+  generateDebianSystemdService,
+  generateDebianMosquittoConf,
+  generateDebianPythonScript,
+  generateDebianInstallScript,
+} from './src/utils/debianScripts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1163,40 +1169,13 @@ app.post('/api/gps/push', (req: Request, res: Response) => {
 });
 
 // Direct Bash Installer File Endpoint
-app.get('/api/debian/install.sh', (_req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'text/x-shellscript');
-  res.send(`#!/usr/bin/env bash
-# Instalador Automatizado AegisGPS para Debian GNU/Linux 11/12 & Raspberry Pi
-set -e
-
-echo "=== [AegisGPS] Instalando pasarela telemática con cifrado AES-256 ==="
-apt-get update
-apt-get install -y python3 python3-pip python3-cryptography python3-requests gpsd gpsd-clients mosquitto mosquitto-clients curl
-
-mkdir -p /opt/aegis-gps
-
-cat << 'EOF' > /etc/systemd/system/aegis-gps.service
-[Unit]
-Description=AegisGPS Telemetry Daemon
-After=network.target gpsd.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/aegis-gps
-ExecStart=/usr/bin/python3 /opt/aegis-gps/aegis_client.py
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-echo "=== AegisGPS instalado con éxito en /opt/aegis-gps ==="
-`);
+app.get('/api/debian/install.sh', (req: Request, res: Response) => {
+  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
+  const serverOrigin = `${proto}://${host}`;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="install-aegis-gps.sh"');
+  res.send(generateDebianInstallScript(serverOrigin));
 });
 
 // 4. Raw Protocols Ingestion (NMEA, Teltonika)
@@ -1324,131 +1303,15 @@ app.post('/api/simulation/toggle', (_req: Request, res: Response) => {
 });
 
 // 9. Debian Linux Gateway Scripts & Config Generator
-app.get('/api/debian/config', (_req: Request, res: Response) => {
-  const systemdService = `[Unit]
-Description=AegisGPS Debian Telemetry Service
-After=network.target gpsd.service
+app.get('/api/debian/config', (req: Request, res: Response) => {
+  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
+  const serverOrigin = `${proto}://${host}`;
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/aegis-gps
-ExecStart=/usr/bin/python3 /opt/aegis-gps/aegis_client.py
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target`;
-
-  const mosquittoConf = `# /etc/mosquitto/conf.d/aegis-gps.conf
-listener 8883
-protocol mqtt
-cafile /etc/ssl/certs/ca-certificates.crt
-certfile /etc/letsencrypt/live/yourdomain/fullchain.pem
-keyfile /etc/letsencrypt/live/yourdomain/privkey.pem
-tls_version tlsv1.3
-
-# Puente de reenvío TLS con cifrado AES
-connection aegis-cloud-bridge
-address 127.0.0.1:5023
-topic gps/+/telemetry both 1`;
-
-  const pythonScript = `#!/usr/bin/env python3
-"""
-AegisGPS - Cliente Debian Linux para GNSS/GPS con Cifrado AES-256-GCM
-Soporta antenas USB (/dev/ttyUSB0), módems Quectel/Teltonika y gpsd.
-"""
-import os
-import json
-import time
-import requests
-from datetime import datetime, timezone
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-# Configuración del Dispositivo Debian
-DEVICE_ID = "dev-debian-patrol-04"
-AES_KEY_HEX = "a4f107bb4c3a27f6e0c98f8216d4e2a901fbc34d88e051e941a329d8924b17aa"
-SERVER_URL = "https://tu-servidor-debian.dominio/api/gps/encrypted-aes"
-
-key_bytes = bytes.fromhex(AES_KEY_HEX)
-aesgcm = AESGCM(key_bytes)
-
-def read_gps_telemetry():
-    # En producción: leer de serial /dev/ttyUSB0 o conectar con gpsd (import gps)
-    return {
-        "deviceId": DEVICE_ID,
-        "latitude": 40.4168,
-        "longitude": -3.7038,
-        "altitude": 665.0,
-        "speed": 45.0,
-        "heading": 180,
-        "satellites": 16,
-        "hdop": 0.8,
-        "battery": 92,
-        "ignition": True,
-        "tamper": False,
-        "sos": False,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
-
-def send_encrypted_telemetry():
-    telemetry = read_gps_telemetry()
-    plaintext = json.dumps(telemetry).encode('utf-8')
-    
-    # Generar IV criptográfico aleatorio de 96 bits (12 bytes)
-    iv = os.urandom(12)
-    # AES-256-GCM produce ciphertext + 16-byte authentication tag al final
-    encrypted = aesgcm.encrypt(iv, plaintext, None)
-    ciphertext = encrypted[:-16]
-    auth_tag = encrypted[-16:]
-    
-    payload = {
-        "deviceId": DEVICE_ID,
-        "algorithm": "AES-256-GCM",
-        "transport": "HTTPS",
-        "iv": iv.hex(),
-        "ciphertext": ciphertext.hex(),
-        "authTag": auth_tag.hex()
-    }
-    
-    try:
-        resp = requests.post(SERVER_URL, json=payload, timeout=5)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Enviado con éxito: HTTP {resp.status_code}")
-    except Exception as e:
-        print(f"Error transmitiendo datos: {e}")
-
-if __name__ == "__main__":
-    print(f"Iniciando cliente GPS Aegis en Debian para {DEVICE_ID}...")
-    while True:
-        send_encrypted_telemetry()
-        time.sleep(3)
-`;
-
-  const installScript = `#!/usr/bin/env bash
-# Script de instalación para Debian 11 / 12 (Bullseye / Bookworm)
-set -e
-
-echo "=== Instalando AegisGPS Debian Telemetry Gateway ==="
-apt-get update
-apt-get install -y python3 python3-pip python3-cryptography python3-requests gpsd gpsd-clients mosquitto mosquitto-clients
-
-mkdir -p /opt/aegis-gps
-cat << 'EOF' > /opt/aegis-gps/aegis_client.py
-${pythonScript}
-EOF
-
-cat << 'EOF' > /etc/systemd/system/aegis-gps.service
-${systemdService}
-EOF
-
-systemctl daemon-reload
-systemctl enable --now aegis-gps.service
-echo "=== Instalación completada! Servicio aegis-gps activo ==="
-systemctl status aegis-gps.service --no-pager
-`;
+  const systemdService = generateDebianSystemdService();
+  const mosquittoConf = generateDebianMosquittoConf();
+  const pythonScript = generateDebianPythonScript(serverOrigin);
+  const installScript = generateDebianInstallScript(serverOrigin);
 
   res.json({
     systemdService,

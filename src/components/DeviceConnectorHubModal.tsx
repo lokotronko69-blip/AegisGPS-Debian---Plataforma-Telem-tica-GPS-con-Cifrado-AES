@@ -19,6 +19,11 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { GpsDevice } from '../types/gps';
+import {
+  generateDebianBase64OneLiner,
+  generateDebianInstallScript,
+  downloadScriptFile,
+} from '../utils/debianScripts';
 
 interface DeviceConnectorHubModalProps {
   isOpen: boolean;
@@ -437,32 +442,110 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
 
           {/* TAB 4: DEBIAN LINUX & RASPBERRY PI */}
           {activeTab === 'debian' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-white">
-                  Debian GNU/Linux, Raspberry Pi & Mini-PC con GNSS Hat
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Instalación en 1 paso para ordenadores de a bordo o equipos industriales Debian.
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>Debian GNU/Linux, Raspberry Pi & Mini-PC con GNSS Hat</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-400">
+                      AUTO-CONTENIDO BASE64
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Instalación autónoma en 1 paso inmune a proxys de autenticación HTML (evita el error <code>&lt;!doctype html&gt;</code> de <code>curl</code>).
+                  </p>
+                </div>
+
+                <button
+                  onClick={() =>
+                    downloadScriptFile(
+                      'install-aegis-gps.sh',
+                      generateDebianInstallScript(serverOrigin)
+                    )
+                  }
+                  className="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs rounded-xl transition-all flex items-center gap-2 shrink-0 shadow-md"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Descargar install-aegis-gps.sh</span>
+                </button>
+              </div>
+
+              {/* Method 1: Base64 Autonomous One-Liner */}
+              <div className="p-4 bg-slate-950 border border-emerald-800/60 rounded-xl space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Opción 1 (Recomendada): Comando en 1 Línea Autónomo (Base64)</span>
+                  </span>
+                  <button
+                    onClick={() =>
+                      handleCopy(generateDebianBase64OneLiner(serverOrigin), 'deb-b64')
+                    }
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-colors shrink-0"
+                  >
+                    {copiedKey === 'deb-b64' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>¡Comando Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar Comando 1-Paso</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-lg font-mono text-[11px] text-cyan-300 overflow-x-auto max-h-28 select-all break-all">
+                  <code>{generateDebianBase64OneLiner(serverOrigin)}</code>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Al estar codificado íntegramente en <strong>Base64</strong>, este comando decodifica el script directamente en tu terminal Debian con <code>base64 -d | sudo bash</code> sin depender de descargas externas que puedan devolver páginas HTML (<code>&lt;!doctype html&gt;</code>).
                 </p>
               </div>
 
-              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+              {/* Method 2: Direct file execution */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
                 <span className="text-xs font-bold text-slate-200 block">
-                  Comando de instalación automática en terminal Debian:
+                  Opción 2: Si descargaste el archivo <code>install-aegis-gps.sh</code> desde el botón superior:
                 </span>
-                <div className="p-3 bg-slate-900 border border-slate-700 rounded-lg font-mono text-xs text-cyan-300 flex items-center justify-between break-all">
-                  <code>curl -sSL {serverOrigin}/api/debian/install.sh | sudo bash</code>
+                <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-lg font-mono text-xs text-slate-200 flex items-center justify-between">
+                  <code>sudo bash ~/Descargas/install-aegis-gps.sh || sudo bash ~/Downloads/install-aegis-gps.sh</code>
                   <button
-                    onClick={() => handleCopy(`curl -sSL ${serverOrigin}/api/debian/install.sh | sudo bash`, 'deb1')}
+                    onClick={() =>
+                      handleCopy(
+                        'sudo bash ~/Descargas/install-aegis-gps.sh || sudo bash ~/Downloads/install-aegis-gps.sh',
+                        'deb-dl'
+                      )
+                    }
                     className="p-1.5 rounded bg-slate-800 text-slate-300 hover:text-white shrink-0 ml-2"
                   >
-                    {copiedKey === 'deb1' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {copiedKey === 'deb-dl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Este comando instala el demonio <code>gpsd</code>, la librería de cifrado militar <code>cryptography</code> (AES-256-GCM), configura la unidad de servicio systemd y arranca la transmisión de forma persistente.
-                </p>
+              </div>
+
+              {/* Full script preview */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">
+                    Contenido íntegro del instalador Bash (crea <code>/opt/aegis-gps/aegis_client.py</code> y servicio Systemd):
+                  </span>
+                  <button
+                    onClick={() =>
+                      handleCopy(generateDebianInstallScript(serverOrigin), 'deb-raw')
+                    }
+                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold"
+                  >
+                    {copiedKey === 'deb-raw' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedKey === 'deb-raw' ? 'Script Copiado' : 'Copiar Script Puro'}</span>
+                  </button>
+                </div>
+                <pre className="p-3 bg-slate-900 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto max-h-48 leading-relaxed">
+                  {generateDebianInstallScript(serverOrigin)}
+                </pre>
               </div>
             </div>
           )}
