@@ -3,7 +3,7 @@
 
 export const DEFAULT_DEBIAN_DEVICE_ID = 'dev-debian-patrol-04';
 export const DEFAULT_DEBIAN_AES_KEY = 'a4f107bb4c3a27f6e0c98f8216d4e2a901fbc34d88e051e941a329d8924b17aa';
-export const AEGIS_APP_VERSION = '2.5.0';
+export const AEGIS_APP_VERSION = '2.4.0';
 
 export function generateDebianSystemdService(): string {
   return `[Unit]
@@ -875,25 +875,18 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       <div id="alerts-list" class="p-6 space-y-2.5 max-h-[70vh] overflow-y-auto"></div>
     </div>
 
-    <!-- MODAL 8: ESCÁNER DE DISPOSITIVOS GPS CERCANOS (5 APARTADOS COMPLETOS) -->
-    <div id="modal-scanner" class="hidden w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <!-- MODAL 8: ESCÁNER DE DISPOSITIVOS GPS CERCANOS (RADAR) -->
+    <div id="modal-scanner" class="hidden w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
         <div>
-          <h2 class="font-display text-base font-bold text-white">📡 Centro de Escaneo de Dispositivos GPS Cercanos (5 Módulos Activos)</h2>
-          <p class="text-xs text-slate-400">Radar Táctico 360°, Red LAN/Puertos, Receptores USB/Serial, Bluetooth BLE y Analizador RF AES-256</p>
+          <h2 class="font-display text-base font-bold text-white">📡 Escáner de Dispositivos GPS Cercanos (Radar RF / LAN / USB)</h2>
+          <p class="text-xs text-slate-400">Barrido de transpondedores GNSS, Teltonika, u-blox y balizas alrededor de tu ubicación actual</p>
         </div>
         <button onclick="openModal('none')" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">✕</button>
       </div>
-      <div class="px-6 py-2 bg-slate-950 border-b border-slate-800 flex items-center gap-2 overflow-x-auto text-xs font-bold">
-        <button onclick="setScannerSubTab('radar')" id="sc-tab-radar" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/50">1. Radar 360° & Proximidad</button>
-        <button onclick="setScannerSubTab('lan')" id="sc-tab-lan" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">2. Red LAN & Puertos</button>
-        <button onclick="setScannerSubTab('usb')" id="sc-tab-usb" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">3. USB / Serial & gpsd</button>
-        <button onclick="setScannerSubTab('ble')" id="sc-tab-ble" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">4. Bluetooth / BLE</button>
-        <button onclick="setScannerSubTab('rf')" id="sc-tab-rf" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">5. Espectro RF & Anti-Jamming</button>
-      </div>
-      <div class="p-6 space-y-4 max-h-[72vh] overflow-y-auto">
+      <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
         <div class="flex items-center justify-between bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-          <div id="scanner-sub-desc" class="text-xs text-slate-300">Detectados <strong class="text-emerald-400 font-mono">6 emisores GPS</strong> en el radio de proximidad de tu nodo Kali</div>
+          <div class="text-xs text-slate-300">Detectados <strong class="text-emerald-400 font-mono">4 transpondedores GPS</strong> en un radio de 2.5 km alrededor de tu nodo Kali</div>
           <button onclick="connectAllNearbyGps()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs">
             ⚡ Vincular Todos los GPS Cercanos al Mapa
           </button>
@@ -1086,61 +1079,21 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       }
     }
 
-    let currentScannerSubTab = 'radar';
-
-    function setScannerSubTab(tab) {
-      currentScannerSubTab = tab;
-      ['radar','lan','usb','ble','rf'].forEach(t => {
-        const btn = document.getElementById('sc-tab-' + t);
-        if (!btn) return;
-        if (t === tab) {
-          btn.className = 'px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/50';
-        } else {
-          btn.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white';
-        }
-      });
-      renderScannerList();
-    }
-
     function renderScannerList() {
       const c = map.getCenter();
-      const catalog = {
-        radar: [
-          { id: 'scan-teltonika-01', name: 'Baliza Teltonika FMB140 Cercana', dist: '185 m · 48°', rssi: '-46 dBm · 18 sats', color: '#10b981', lat: c.lat + 0.0014, lon: c.lng + 0.0018 },
-          { id: 'scan-ublox-02', name: 'Receptor GNSS u-blox NEO-M9N', dist: '340 m · 128°', rssi: '-52 dBm · 19 sats', color: '#06b6d4', lat: c.lat - 0.0019, lon: c.lng + 0.0024 },
-          { id: 'scan-queclink-03', name: 'Unidad Móvil Queclink GL300W', dist: '610 m · 218°', rssi: '-61 dBm · 15 sats', color: '#f59e0b', lat: c.lat - 0.0028, lon: c.lng - 0.0025 },
-          { id: 'scan-mavlink-04', name: 'Dron Táctico MAVLink GNSS-04', dist: '890 m · 312°', rssi: '-68 dBm · 21 sats', color: '#a855f7', lat: c.lat + 0.0035, lon: c.lng - 0.0031 }
-        ],
-        lan: [
-          { id: 'scan-lan-8765', name: 'Pasarela Local Kali AegisGPS (127.0.0.1:8765)', dist: '0 m · LAN', rssi: 'ACTIVO 1ms · HTTP/CORS', color: '#10b981', lat: c.lat + 0.0002, lon: c.lng - 0.0002 },
-          { id: 'scan-lan-2947', name: 'Demonio Linux gpsd Multiplexer (127.0.0.1:2947)', dist: '0 m · LAN', rssi: 'SOCKET TCP · NMEA/JSON', color: '#06b6d4', lat: c.lat - 0.0008, lon: c.lng + 0.0011 },
-          { id: 'scan-lan-5023', name: 'Servidor TCP Teltonika / Queclink (:5023)', dist: 'Red Local', rssi: 'ESCUCHANDO · Codec8', color: '#f59e0b', lat: c.lat + 0.0012, lon: c.lng + 0.0009 },
-          { id: 'scan-lan-8883', name: 'Broker Mosquitto MQTT-TLS (:8883)', dist: 'Red Local', rssi: 'TLS 1.3 · AES-256-GCM', color: '#a855f7', lat: c.lat - 0.0015, lon: c.lng - 0.0012 }
-        ],
-        usb: [
-          { id: 'scan-usb-ttyACM0', name: 'Receptor USB GNSS (/dev/ttyACM0 @ 9600 bps)', dist: 'USB Directo', rssi: 'u-blox 10Hz · $GPRMC', color: '#10b981', lat: c.lat + 0.0005, lon: c.lng + 0.0006 },
-          { id: 'scan-usb-ttyUSB0', name: 'Antena Serial FTDI/Prolific (/dev/ttyUSB0 @ 4800 bps)', dist: 'UART USB', rssi: 'SiRF Star IV · NMEA-0183', color: '#06b6d4', lat: c.lat - 0.0006, lon: c.lng + 0.0008 },
-          { id: 'scan-usb-ttyAMA0', name: 'Módulo GPIO UART (/dev/ttyAMA0 @ 115200 bps)', dist: 'Hardware Bus', rssi: 'Galileo+GPS · PPS OK', color: '#f59e0b', lat: c.lat + 0.0009, lon: c.lng - 0.0007 }
-        ],
-        ble: [
-          { id: 'scan-ble-garmin', name: 'Garmin GLO 2 Aviation Bluetooth GPS', dist: '55 m · BLE 5.0', rssi: '-44 dBm · GATT 0x1819', color: '#38bdf8', lat: c.lat + 0.0004, lon: c.lng + 0.0005 },
-          { id: 'scan-ble-nrf52', name: 'Baliza Táctica Nordic nRF52840 GNSS', dist: '90 m · Coded PHY', rssi: '-58 dBm · Bat 92%', color: '#22d3ee', lat: c.lat - 0.0007, lon: c.lng + 0.0003 },
-          { id: 'scan-ble-uwb', name: 'Localizador UWB / BLE 5.3 Asset Tag', dist: '140 m · Ch.9 UWB', rssi: '-67 dBm · Bat 81%', color: '#a855f7', lat: c.lat + 0.0011, lon: c.lng - 0.0009 }
-        ],
-        rf: [
-          { id: 'scan-rf-l1', name: 'Portadora GNSS L1/E1 (1575.42 MHz · Anti-Jamming OK)', dist: 'C/N0 47.2 dB-Hz', rssi: 'Interferencia 0.01% · MAC OK', color: '#10b981', lat: c.lat + 0.0016, lon: c.lng + 0.0012 },
-          { id: 'scan-rf-lora', name: 'Trama LoRaWAN Meshtastic 868.1 MHz SF7', dist: '1.1 km · 868MHz', rssi: '-76 dBm · AES-256-GCM', color: '#a855f7', lat: c.lat - 0.0029, lon: c.lng + 0.0022 },
-          { id: 'scan-rf-aprs', name: 'Transpondedor Táctico APRS VHF 144.80 MHz', dist: '1.6 km · VHF', rssi: '-79 dBm · AX.25 + AES', color: '#f59e0b', lat: c.lat + 0.0031, lon: c.lng - 0.0026 }
-        ]
-      };
-      const items = catalog[currentScannerSubTab] || catalog.radar;
+      const nearTemplates = [
+        { id: 'scan-teltonika-01', name: 'Baliza Teltonika FMB140 Cercana', dist: '185 m', rssi: '-46 dBm', color: '#10b981', lat: c.lat + 0.0014, lon: c.lng + 0.0018 },
+        { id: 'scan-ublox-02', name: 'Receptor GNSS u-blox NEO-M9N', dist: '340 m', rssi: '-52 dBm', color: '#06b6d4', lat: c.lat - 0.0019, lon: c.lng + 0.0024 },
+        { id: 'scan-queclink-03', name: 'Unidad Móvil Queclink GL300W', dist: '610 m', rssi: '-61 dBm', color: '#f59e0b', lat: c.lat - 0.0028, lon: c.lng - 0.0025 },
+        { id: 'scan-lora-04', name: 'Baliza LoRaWAN Meshtastic 868MHz', dist: '920 m', rssi: '-71 dBm', color: '#a855f7', lat: c.lat + 0.0035, lon: c.lng - 0.0031 }
+      ];
       const list = document.getElementById('scanner-list');
       if (!list) return;
       list.innerHTML = '';
-      items.forEach(item => {
+      nearTemplates.forEach(item => {
         const row = document.createElement('div');
         row.className = 'p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between';
-        row.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + item.color + '"></span>' + item.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-1">Proximidad: ' + item.dist + ' · Canal: ' + item.rssi + '</div></div>';
+        row.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + item.color + '"></span>' + item.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-1">Distancia: ' + item.dist + ' · Señal: ' + item.rssi + ' · AES-256-GCM</div></div>';
         const btn = document.createElement('button');
         btn.className = 'px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs';
         btn.textContent = '+ Vincular al Mapa';

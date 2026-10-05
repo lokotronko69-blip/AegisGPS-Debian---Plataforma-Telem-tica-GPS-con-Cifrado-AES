@@ -1392,31 +1392,15 @@ app.post('/api/gps/scan-nearby', (req: Request, res: Response) => {
     },
   ];
 
-  const discovered = templates.map((t, idx) => {
+  const discovered = templates.map((t) => {
     const lat = parseFloat((baseLat + t.dLat + (Math.random() - 0.5) * 0.0004).toFixed(6));
     const lon = parseFloat((baseLon + t.dLon + (Math.random() - 0.5) * 0.0004).toFixed(6));
     const distMeters = Math.round(calculateDistance(baseLat, baseLon, lat, lon));
     const alreadyConnected = devices.has(t.id);
-    const samplePayload = JSON.stringify({ id: t.id, lat, lon, spd: t.speed, sats: t.satellites });
-    const sampleKey = crypto.createHash('sha256').update(t.id).digest('hex');
-    const enc = encryptAesGcm(samplePayload, sampleKey);
-    const latDeg = Math.floor(Math.abs(lat));
-    const latMin = ((Math.abs(lat) - latDeg) * 60).toFixed(4);
-    const lonDeg = Math.floor(Math.abs(lon));
-    const lonMin = ((Math.abs(lon) - lonDeg) * 60).toFixed(4);
-    const nmeaFrame = `$GPRMC,123519,A,${String(latDeg).padStart(2, '0')}${latMin},${lat >= 0 ? 'N' : 'S'},${String(lonDeg).padStart(3, '0')}${lonMin},${lon >= 0 ? 'E' : 'W'},${(t.speed / 1.852).toFixed(1)},${t.heading}.0,051026,003.1,W*6A`;
-
     return {
       ...t,
       latitude: lat,
       longitude: lon,
-      altitude: 445 + idx * 28,
-      hdop: parseFloat((0.6 + idx * 0.1).toFixed(1)),
-      constellations: idx % 2 === 0 ? 'GPS L1 + Galileo E1 + GLONASS' : 'GPS L1/L5 + BeiDou + SBAS',
-      nmeaFrame,
-      ivHex: enc.ivHex,
-      ciphertextHex: enc.ciphertextHex,
-      authTagHex: enc.authTagHex,
       distanceMeters: distMeters,
       alreadyConnected,
     };
@@ -1428,120 +1412,6 @@ app.post('/api/gps/scan-nearby', (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     discovered,
   });
-});
-
-// Real TCP / LAN Port & Gateway Scanner Endpoint
-app.post('/api/gps/scan-lan-ports', async (req: Request, res: Response) => {
-  const baseLat = Number(req.body.latitude) || 42.8150;
-  const baseLon = Number(req.body.longitude) || -1.6425;
-  const customHost = String(req.body.customHost || '127.0.0.1').trim();
-
-  const checkTcpPort = (host: string, port: number, timeoutMs = 450): Promise<{ open: boolean; latencyMs: number }> => {
-    return new Promise((resolve) => {
-      const start = Date.now();
-      const sock = new net.Socket();
-      let settled = false;
-      const finish = (open: boolean) => {
-        if (!settled) {
-          settled = true;
-          sock.destroy();
-          resolve({ open, latencyMs: Math.max(1, Date.now() - start) });
-        }
-      };
-      sock.setTimeout(timeoutMs);
-      sock.once('connect', () => finish(true));
-      sock.once('timeout', () => finish(false));
-      sock.once('error', () => finish(false));
-      sock.connect(port, host);
-    });
-  };
-
-  const portTargets = [
-    {
-      id: 'scan-lan-5023',
-      host: customHost,
-      port: TCP_PORT,
-      service: 'Servidor TCP Raw Teltonika / NMEA AegisGPS',
-      protocol: 'teltonika-codec8',
-      transport: 'TCP Socket',
-      deviceModel: 'Pasarela TCP AegisGPS (:5023)',
-      vehicleType: 'patrol',
-      color: '#10b981',
-      latOffset: 0.0008,
-      lonOffset: 0.0011,
-    },
-    {
-      id: 'scan-lan-8765',
-      host: customHost,
-      port: 8765,
-      service: 'Demonio Local Kali/Debian AegisGPS Bridge',
-      protocol: 'aes-encrypted-json',
-      transport: 'HTTP/CORS JSON',
-      deviceModel: 'Nodo Host Kali Linux (:8765)',
-      vehicleType: 'patrol',
-      color: '#06b6d4',
-      latOffset: 0.0002,
-      lonOffset: -0.0003,
-    },
-    {
-      id: 'scan-lan-2947',
-      host: customHost,
-      port: 2947,
-      service: 'Demonio Linux gpsd (NMEA / JSON Multiplexer)',
-      protocol: 'nmea-0183-aes',
-      transport: 'TCP Socket gpsd',
-      deviceModel: 'Servicio Linux gpsd (:2947)',
-      vehicleType: 'car',
-      color: '#38bdf8',
-      latOffset: -0.0012,
-      lonOffset: 0.0015,
-    },
-    {
-      id: 'scan-lan-8883',
-      host: customHost,
-      port: 8883,
-      service: 'Broker Mosquitto MQTT-TLS Telemetría Cifrada',
-      protocol: 'mqtt-tls-aes',
-      transport: 'MQTT-TLS',
-      deviceModel: 'Gateway MQTT-TLS (:8883)',
-      vehicleType: 'van',
-      color: '#f59e0b',
-      latOffset: 0.0021,
-      lonOffset: -0.0019,
-    },
-    {
-      id: 'scan-lan-14550',
-      host: customHost,
-      port: 14550,
-      service: 'Pasarela Telemetría MAVLink (ArduPilot / PX4)',
-      protocol: 'aes-encrypted-json',
-      transport: 'UDP/TCP MAVLink',
-      deviceModel: 'Estación Tierra MAVLink (:14550)',
-      vehicleType: 'drone',
-      color: '#a855f7',
-      latOffset: -0.0025,
-      lonOffset: -0.0022,
-    },
-  ];
-
-  const results = await Promise.all(
-    portTargets.map(async (target) => {
-      const probe = await checkTcpPort(target.host, target.port);
-      const lat = parseFloat((baseLat + target.latOffset).toFixed(6));
-      const lon = parseFloat((baseLon + target.lonOffset).toFixed(6));
-      return {
-        ...target,
-        open: probe.open || target.port === TCP_PORT || target.port === 8883,
-        rawSocketOpen: probe.open,
-        latencyMs: probe.latencyMs,
-        latitude: lat,
-        longitude: lon,
-        alreadyConnected: devices.has(target.id),
-      };
-    })
-  );
-
-  res.json({ host: customHost, timestamp: new Date().toISOString(), ports: results });
 });
 
 // Link / Connect Scanned Nearby GPS Device(s) to Live Fleet
