@@ -15,7 +15,8 @@ import {
   Globe,
   Satellite,
   Sun,
-  Moon
+  Moon,
+  Radar
 } from 'lucide-react';
 import { GpsDevice, Geofence, GpsPosition } from '../types/gps';
 import { formatCoordinates } from '../utils/geo';
@@ -31,6 +32,7 @@ interface MapViewProps {
   onToggleRealGps?: () => void;
   realGpsActive?: boolean;
   realLocationCoords?: { lat: number; lng: number; accuracy?: number } | null;
+  onOpenScanner?: () => void;
 }
 
 export type MapLayerType = 'satellite' | 'osm' | 'dark' | 'voyager';
@@ -46,6 +48,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onToggleRealGps,
   realGpsActive,
   realLocationCoords,
+  onOpenScanner,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -514,6 +517,17 @@ export const MapView: React.FC<MapViewProps> = ({
             title={realGpsActive ? 'Desactivar mi GPS real' : 'Conectar y centrar en mi GPS real'}
           >
             <MapPin className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Scan Nearby GPS Radar Button */}
+        {onOpenScanner && (
+          <button
+            onClick={onOpenScanner}
+            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border border-emerald-500/50 rounded-xl shadow-2xl backdrop-blur-md transition-all hover:scale-105"
+            title="Abrir Escáner de Dispositivos GPS Cercanos (6 Apartados)"
+          >
+            <Radar className="w-4 h-4 animate-spin" style={{ animationDuration: '5s' }} />
           </button>
         )}
 

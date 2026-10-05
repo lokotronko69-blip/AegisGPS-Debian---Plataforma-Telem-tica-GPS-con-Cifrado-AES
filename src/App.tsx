@@ -550,6 +550,7 @@ export default function App() {
           onToggleRealGps={handleToggleRealGps}
           realGpsActive={realGpsActive}
           realLocationCoords={realLocationCoords}
+          onOpenScanner={() => setIsScannerOpen(true)}
         />
       </div>
 
@@ -710,6 +711,7 @@ export default function App() {
             setSelectedDevice(focusDev);
           }
         }}
+        onCreateGeofence={handleAddGeofence}
       />
 
       {/* Universal Device Connector Hub Modal */}

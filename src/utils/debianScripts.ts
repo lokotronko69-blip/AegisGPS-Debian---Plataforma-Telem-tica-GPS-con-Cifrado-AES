@@ -875,23 +875,48 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       <div id="alerts-list" class="p-6 space-y-2.5 max-h-[70vh] overflow-y-auto"></div>
     </div>
 
-    <!-- MODAL 8: ESCÁNER DE DISPOSITIVOS GPS CERCANOS (RADAR) -->
-    <div id="modal-scanner" class="hidden w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+    <!-- MODAL 8: ESCÁNER DE DISPOSITIVOS GPS CERCANOS (SUITE COMPLETA 6 APARTADOS) -->
+    <div id="modal-scanner" class="hidden w-full max-w-6xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
         <div>
-          <h2 class="font-display text-base font-bold text-white">📡 Escáner de Dispositivos GPS Cercanos (Radar RF / LAN / USB)</h2>
-          <p class="text-xs text-slate-400">Barrido de transpondedores GNSS, Teltonika, u-blox y balizas alrededor de tu ubicación actual</p>
+          <h2 class="font-display text-base font-bold text-white">📡 Centro de Escaneo de Dispositivos GPS Cercanos (Suite 6 Apartados)</h2>
+          <p class="text-xs text-slate-400">Radar 360°, Red Local LAN/TCP, Puertos USB/UART, Bluetooth BLE, Espectro GNSS y Geocerca de Proximidad</p>
         </div>
         <button onclick="openModal('none')" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">✕</button>
       </div>
-      <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-        <div class="flex items-center justify-between bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-          <div class="text-xs text-slate-300">Detectados <strong class="text-emerald-400 font-mono">4 transpondedores GPS</strong> en un radio de 2.5 km alrededor de tu nodo Kali</div>
-          <button onclick="connectAllNearbyGps()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs">
-            ⚡ Vincular Todos los GPS Cercanos al Mapa
+
+      <!-- Barra de 6 Apartados del Escáner -->
+      <div class="px-4 py-2 bg-slate-950 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto text-xs">
+        <button onclick="setScannerTab('radar')" id="scantab-radar" class="px-3 py-1.5 rounded-xl font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">1. Radar 360° & Proximidad</button>
+        <button onclick="setScannerTab('lan')" id="scantab-lan" class="px-3 py-1.5 rounded-xl font-semibold text-slate-400 hover:text-white">2. Red Local LAN / TCP</button>
+        <button onclick="setScannerTab('usb')" id="scantab-usb" class="px-3 py-1.5 rounded-xl font-semibold text-slate-400 hover:text-white">3. Hardware USB / NMEA</button>
+        <button onclick="setScannerTab('ble')" id="scantab-ble" class="px-3 py-1.5 rounded-xl font-semibold text-slate-400 hover:text-white">4. Bluetooth BLE</button>
+        <button onclick="setScannerTab('spectrum')" id="scantab-spectrum" class="px-3 py-1.5 rounded-xl font-semibold text-slate-400 hover:text-white">5. Espectro RF & Triangulación</button>
+        <button onclick="setScannerTab('geo')" id="scantab-geo" class="px-3 py-1.5 rounded-xl font-semibold text-slate-400 hover:text-white">6. Geocerca & Exportar</button>
+      </div>
+
+      <div class="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 max-h-[75vh] overflow-y-auto">
+        <!-- Columna Izquierda: Radar Circular 360° -->
+        <div class="lg:col-span-4 bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-between space-y-3">
+          <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Radar Táctico 360° (Radio 2.5 km)</div>
+          <div class="relative w-56 h-56 rounded-full bg-slate-950 border-2 border-emerald-500/40 flex items-center justify-center overflow-hidden">
+            <div class="absolute w-3/4 h-3/4 rounded-full border border-emerald-500/20"></div>
+            <div class="absolute w-2/4 h-2/4 rounded-full border border-emerald-500/20"></div>
+            <div class="absolute inset-x-0 h-px bg-emerald-500/20"></div>
+            <div class="absolute inset-y-0 w-px bg-emerald-500/20"></div>
+            <div class="w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 shadow-lg"></div>
+            <div style="left:68%;top:32%" class="absolute w-3 h-3 rounded-full bg-emerald-400 animate-ping"></div>
+            <div style="left:72%;top:66%" class="absolute w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+            <div style="left:28%;top:70%" class="absolute w-3 h-3 rounded-full bg-amber-400 animate-ping"></div>
+            <div style="left:32%;top:28%" class="absolute w-3 h-3 rounded-full bg-purple-400 animate-ping"></div>
+          </div>
+          <button onclick="connectAllNearbyGps()" class="w-full py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs">
+            ⚡ Vincular Todos los GPS al Mapa
           </button>
         </div>
-        <div id="scanner-list" class="space-y-2.5"></div>
+
+        <!-- Columna Derecha: Contenido Dinámico de los 6 Apartados -->
+        <div class="lg:col-span-8 space-y-3" id="scanner-section-body"></div>
       </div>
     </div>
 
@@ -1079,37 +1104,81 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       }
     }
 
+    let currentScannerTab = 'radar';
+
+    function setScannerTab(tab) {
+      currentScannerTab = tab;
+      ['radar','lan','usb','ble','spectrum','geo'].forEach(t => {
+        const b = document.getElementById('scantab-' + t);
+        if (!b) return;
+        if (t === tab) {
+          b.className = 'px-3 py-1.5 rounded-xl font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        } else {
+          b.className = 'px-3 py-1.5 rounded-xl font-semibold text-slate-400 hover:text-white';
+        }
+      });
+      renderScannerList();
+    }
+
     function renderScannerList() {
       const c = map.getCenter();
       const nearTemplates = [
-        { id: 'scan-teltonika-01', name: 'Baliza Teltonika FMB140 Cercana', dist: '185 m', rssi: '-46 dBm', color: '#10b981', lat: c.lat + 0.0014, lon: c.lng + 0.0018 },
-        { id: 'scan-ublox-02', name: 'Receptor GNSS u-blox NEO-M9N', dist: '340 m', rssi: '-52 dBm', color: '#06b6d4', lat: c.lat - 0.0019, lon: c.lng + 0.0024 },
-        { id: 'scan-queclink-03', name: 'Unidad Móvil Queclink GL300W', dist: '610 m', rssi: '-61 dBm', color: '#f59e0b', lat: c.lat - 0.0028, lon: c.lng - 0.0025 },
-        { id: 'scan-lora-04', name: 'Baliza LoRaWAN Meshtastic 868MHz', dist: '920 m', rssi: '-71 dBm', color: '#a855f7', lat: c.lat + 0.0035, lon: c.lng - 0.0031 }
+        { id: 'scan-teltonika-01', name: 'Baliza Teltonika FMB140 Cercana', dist: '185 m', rssi: '-46 dBm', chan: 'TCP :5023 · 1575.42 MHz', color: '#10b981', lat: c.lat + 0.0014, lon: c.lng + 0.0018 },
+        { id: 'scan-ublox-02', name: 'Receptor GNSS u-blox NEO-M9N', dist: '340 m', rssi: '-52 dBm', chan: '/dev/ttyACM0 · gpsd :2947', color: '#06b6d4', lat: c.lat - 0.0019, lon: c.lng + 0.0024 },
+        { id: 'scan-queclink-03', name: 'Unidad Móvil Queclink GL300W', dist: '610 m', rssi: '-61 dBm', chan: 'MQTT-TLS :8883', color: '#f59e0b', lat: c.lat - 0.0028, lon: c.lng - 0.0025 },
+        { id: 'scan-lora-04', name: 'Baliza LoRaWAN Meshtastic 868MHz', dist: '920 m', rssi: '-71 dBm', chan: 'LoRa RF 868.1 MHz', color: '#a855f7', lat: c.lat + 0.0035, lon: c.lng - 0.0031 },
+        { id: 'scan-ble-05', name: 'Garmin GLO 2 Aviation BLE GNSS', dist: '95 m', rssi: '-42 dBm', chan: 'Bluetooth BLE 5.0 (GATT)', color: '#22d3ee', lat: c.lat + 0.0008, lon: c.lng - 0.0011 }
       ];
-      const list = document.getElementById('scanner-list');
-      if (!list) return;
-      list.innerHTML = '';
-      nearTemplates.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between';
-        row.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + item.color + '"></span>' + item.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-1">Distancia: ' + item.dist + ' · Señal: ' + item.rssi + ' · AES-256-GCM</div></div>';
+      const box = document.getElementById('scanner-section-body');
+      if (!box) return;
+      box.innerHTML = '';
+
+      if (currentScannerTab === 'radar' || currentScannerTab === 'ble') {
+        nearTemplates.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between';
+          row.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + item.color + '"></span>' + item.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-1">Distancia: ' + item.dist + ' · Señal: ' + item.rssi + ' · ' + item.chan + '</div></div>';
+          const btn = document.createElement('button');
+          btn.className = 'px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs';
+          btn.textContent = '+ Vincular al Mapa';
+          btn.onclick = async () => {
+            await fetch('/api/devices', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: item.id, name: item.name, color: item.color, latitude: item.lat, longitude: item.lon })
+            });
+            selectedDeviceId = item.id;
+            await fetchState();
+            openModal('none');
+          };
+          row.appendChild(btn);
+          box.appendChild(row);
+        });
+      } else if (currentScannerTab === 'lan') {
+        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs"><div class="font-bold text-cyan-400">Puertos y Servicios GPS en Red Local (LAN / Kali)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">127.0.0.1:8765 -> Agente AegisGPS Kali (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">127.0.0.1:2947 -> Demonio gpsd JSON Socket (EN ESCUCHA)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-amber-300">0.0.0.0:5023   -> Receptor TCP Teltonika / Queclink (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-purple-300">0.0.0.0:8883   -> Broker Mosquitto MQTT-TLS (ACTIVO)</div></div>';
+      } else if (currentScannerTab === 'usb') {
+        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs"><div class="font-bold text-emerald-400">Interfaces Serie Hardware USB / UART Detectadas</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyACM0 -> u-blox NEO-M9N (115200 bps) · $GNGGA,101245.00,4248.7860,N,00138.4060,W*4B</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyUSB0 -> GlobalSat SiRF Star IV (9600 bps) · $GPRMC,101246.00,A,4248.9840,N,00138.4420,W*7C</div></div>';
+      } else if (currentScannerTab === 'spectrum') {
+        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs"><div class="font-bold text-emerald-400">Espectro RF GNSS (0% Jamming · 4 Constelaciones)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">GPS L1 (1575.42 MHz)     -> SNR 47 dB-Hz · 11 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">Galileo E1 (1575.42 MHz) -> SNR 45 dB-Hz · 8 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-amber-300">GLONASS L1 (1602.00 MHz) -> SNR 42 dB-Hz · 7 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-purple-300">LoRa ISM (868.10 MHz)    -> SNR 36 dB-Hz · Balizas RF</div></div>';
+      } else if (currentScannerTab === 'geo') {
+        const wrap = document.createElement('div');
+        wrap.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
+        wrap.innerHTML = '<div class="font-bold text-white">Crear Geocerca de Vigilancia con el Radio de Escaneo (2500m)</div><p class="text-slate-400">Genera un perímetro circular alrededor de tu ubicación actual para alertar sobre cualquier GPS cercano.</p>';
         const btn = document.createElement('button');
-        btn.className = 'px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs';
-        btn.textContent = '+ Vincular al Mapa';
+        btn.className = 'px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold';
+        btn.textContent = '🚧 Activar Geocerca de Proximidad en el Mapa';
         btn.onclick = async () => {
-          await fetch('/api/devices', {
+          await fetch('/api/geofences', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: item.id, name: item.name, color: item.color, latitude: item.lat, longitude: item.lon })
+            body: JSON.stringify({ name: 'Perímetro Radar GPS (2.5km)', center: [c.lat, c.lng], radius: 2500, speedLimit: 70, color: '#10b981' })
           });
-          selectedDeviceId = item.id;
           await fetchState();
           openModal('none');
         };
-        row.appendChild(btn);
-        list.appendChild(row);
-      });
+        wrap.appendChild(btn);
+        box.appendChild(wrap);
+      }
     }
 
     async function connectAllNearbyGps() {
