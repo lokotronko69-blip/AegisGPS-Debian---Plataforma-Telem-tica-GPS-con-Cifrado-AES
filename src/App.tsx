@@ -710,6 +710,7 @@ export default function App() {
             setSelectedDevice(focusDev);
           }
         }}
+        onAddGeofence={handleAddGeofence}
       />
 
       {/* Universal Device Connector Hub Modal */}
