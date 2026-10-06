@@ -26,7 +26,8 @@ interface HeaderProps {
   stats: TelemetryStats | null;
   audioEnabled: boolean;
   onToggleAudio: () => void;
-  onToggleSimulation: () => void;
+  realGpsActive?: boolean;
+  onToggleRealGps?: () => void;
   unreadAlertsCount: number;
   onOpenNotifications: () => void;
   onOpenRegisterDevice: () => void;
@@ -45,7 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   stats,
   audioEnabled,
   onToggleAudio,
-  onToggleSimulation,
+  realGpsActive = false,
+  onToggleRealGps,
   unreadAlertsCount,
   onOpenNotifications,
   onOpenRegisterDevice,
@@ -53,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenScanner,
   onOpenUpdater,
   onOpenHistory,
-  geofencesCount = 3,
+  geofencesCount = 0,
   updateAvailable,
   connectedSse,
 }) => {
@@ -88,8 +90,8 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'bg-rose-500'
               }`}
             />
-            <span className="font-mono text-[11px] text-slate-300">
-              {connectedSse ? 'ENLACE AES-256-GCM ACTIVO' : 'CONECTANDO...'}
+            <span className="font-mono text-[11px] text-emerald-400 font-semibold">
+              {connectedSse ? 'PRODUCCIÓN REAL · AES-256-GCM' : 'CONECTANDO...'}
             </span>
             <span aria-hidden="true">·</span>
             <span className="font-mono text-[11px] text-cyan-400">
@@ -113,27 +115,21 @@ export const Header: React.FC<HeaderProps> = ({
             {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
-          {/* Simulation Toggle */}
-          <button
-            onClick={onToggleSimulation}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-              stats?.simulationRunning
-                ? 'bg-slate-800 border-slate-700 text-cyan-300 hover:bg-slate-700'
-                : 'bg-amber-950/60 border-amber-800/60 text-amber-300 hover:bg-amber-900/60'
-            }`}
-          >
-            {stats?.simulationRunning ? (
-              <>
-                <Pause className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Pausar Flota</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 text-amber-400" />
-                <span>Reanudar Flota</span>
-              </>
-            )}
-          </button>
+          {/* Real Hardware GPS Live Stream Toggle */}
+          {onToggleRealGps && (
+            <button
+              onClick={onToggleRealGps}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                realGpsActive
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
+                  : 'bg-slate-800 border-emerald-500/50 text-emerald-300 hover:bg-slate-700'
+              }`}
+              title="Transmitir coordenadas reales de este dispositivo con cifrado AES-256-GCM"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>{realGpsActive ? 'GPS Real Activo' : 'Mi GPS Real'}</span>
+            </button>
+          )}
 
           {/* Notifications Bell */}
           <button
@@ -277,7 +273,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Radio className="w-3.5 h-3.5 text-amber-400" />
-          <span>Inyector GPS & Pruebas</span>
+          <span>Transmisor GPS & NMEA Real</span>
         </button>
 
         <button

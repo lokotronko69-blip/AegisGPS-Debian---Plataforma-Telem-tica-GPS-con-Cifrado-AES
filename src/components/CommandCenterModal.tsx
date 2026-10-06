@@ -29,8 +29,6 @@ interface CommandCenterModalProps {
   onOpenTab?: (tab: 'map' | 'crypto' | 'geofences' | 'debian' | 'simulation') => void;
   onToggleRealGps?: () => void;
   realGpsActive?: boolean;
-  onToggleSimulation?: () => void;
-  simulationRunning?: boolean;
 }
 
 interface CommandItem {
@@ -50,8 +48,6 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
   onOpenTab,
   onToggleRealGps,
   realGpsActive,
-  onToggleSimulation,
-  simulationRunning,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'debian' | 'hardware' | 'api' | 'app'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -201,9 +197,9 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             deviceId: 'kali-tactical-01',
-            latitude: 40.4185 + (Math.random() - 0.5) * 0.008,
-            longitude: -3.7025 + (Math.random() - 0.5) * 0.008,
-            speed: 62.5,
+            latitude: 40.4185,
+            longitude: -3.7025,
+            speed: 0,
             heading: 135,
             battery: 96,
           }),
@@ -216,12 +212,10 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
       category: 'api',
       title: 'Enviar posición con protocolo Traccar / OsmAnd (GET / POST)',
       description: 'Compatible con la app móvil Traccar Client y scripts ligeros mediante parámetros URL.',
-      command: `curl -s "${serverOrigin}/api/gps/osmand?id=movil-tactico-02&lat=40.4220&lon=-3.6990&speed=45&bearing=90&batt=89"`,
+      command: `curl -s "${serverOrigin}/api/gps/osmand?id=movil-tactico-02&lat=40.4220&lon=-3.6990&speed=0&bearing=90&batt=89"`,
       liveAction: async () => {
-        const lat = (40.422 + (Math.random() - 0.5) * 0.006).toFixed(6);
-        const lon = (-3.699 + (Math.random() - 0.5) * 0.006).toFixed(6);
         const res = await fetch(
-          `/api/gps/osmand?id=movil-tactico-02&lat=${lat}&lon=${lon}&speed=45&bearing=90&batt=89`
+          `/api/gps/osmand?id=movil-tactico-02&lat=40.4220&lon=-3.6990&speed=0&bearing=90&batt=89`
         );
         return JSON.stringify(await res.json(), null, 2);
       },
@@ -376,17 +370,17 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
 
           <button
             onClick={() => {
-              if (onToggleSimulation) onToggleSimulation();
+              if (onOpenTab) onOpenTab('debian');
             }}
             className="p-2.5 rounded-xl border bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200 text-left transition-all flex items-center gap-2.5"
           >
             <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
             <div className="min-w-0">
               <div className="text-xs font-bold truncate">
-                {simulationRunning ? 'Pausar Flota Demo' : 'Reanudar Flota Demo'}
+                Instalador Kali / Debian
               </div>
               <div className="text-[10px] text-slate-400 truncate">
-                {simulationRunning ? 'Dejar solo tus GPS reales' : 'Activar movimiento demo'}
+                Daemon Python + gpsd real
               </div>
             </div>
           </button>

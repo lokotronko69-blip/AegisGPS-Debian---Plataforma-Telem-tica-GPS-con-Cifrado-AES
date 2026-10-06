@@ -16,7 +16,8 @@ import {
   ChevronRight as ChevronRightIcon,
   MapPin,
   Compass,
-  Radar
+  Radar,
+  Trash2
 } from 'lucide-react';
 import { GpsDevice, DeviceStatus } from '../types/gps';
 
@@ -24,6 +25,7 @@ interface DeviceSidebarProps {
   devices: GpsDevice[];
   selectedDeviceId: string | null;
   onSelectDevice: (device: GpsDevice) => void;
+  onDeleteDevice?: (id: string) => void;
   onOpenHistory: (device: GpsDevice) => void;
   onOpenCrypto: (device: GpsDevice) => void;
   isCollapsed: boolean;
@@ -39,6 +41,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
   devices,
   selectedDeviceId,
   onSelectDevice,
+  onDeleteDevice,
   onOpenHistory,
   onOpenCrypto,
   isCollapsed,
@@ -92,18 +95,21 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
     return <Battery className="w-3.5 h-3.5 text-slate-400" />;
   };
 
-  const getStatusText = (status: DeviceStatus, speed = 0) => {
+  const getStatusText = (status: DeviceStatus, speed = 0, hasPosition = false) => {
+    if (!hasPosition && status === 'offline') {
+      return 'En espera de trama GPS real';
+    }
     switch (status) {
       case 'moving':
         return `En ruta · ${Math.round(speed)} km/h`;
       case 'idle':
-        return 'Ralentí · Motor encendido';
+        return 'Señal GPS activa · Estacionario';
       case 'stopped':
-        return 'Detenido · Motor apagado';
+        return 'Detenido · Señal verificada';
       case 'alert':
         return 'Alerta de Seguridad';
       default:
-        return 'Sin conexión';
+        return 'En espera de conexión real';
     }
   };
 
@@ -383,7 +389,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
                       }`} 
                     />
                     <span className="text-slate-300 font-medium">
-                      {getStatusText(dev.status, speed)}
+                      {getStatusText(dev.status, speed, !!lp)}
                     </span>
                   </div>
 
@@ -421,6 +427,18 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
                     </button>
+                    {onDeleteDevice && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteDevice(dev.id);
+                        }}
+                        className="p-1 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors"
+                        title="Eliminar dispositivo de la flota"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                   </div>
                 </div>

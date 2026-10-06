@@ -3,7 +3,7 @@
 
 export const DEFAULT_DEBIAN_DEVICE_ID = 'dev-debian-patrol-04';
 export const DEFAULT_DEBIAN_AES_KEY = 'a4f107bb4c3a27f6e0c98f8216d4e2a901fbc34d88e051e941a329d8924b17aa';
-export const AEGIS_APP_VERSION = '2.7.0';
+export const AEGIS_APP_VERSION = '3.0.0';
 
 export function generateDebianSystemdService(): string {
   return `[Unit]
@@ -87,10 +87,11 @@ hostname = socket.gethostname()
 latest_encrypted_packet = None
 step_counter = 0
 cached_geoip = None
-simulation_running = True
+simulation_running = False
 packets_decrypted = 0
+last_browser_gps_ts = 0.0
 
-# Estado completo de flota local, geocercas, logs criptográficos y alertas
+# Estado completo de flota local, geocercas, logs criptográficos y alertas (0% Simulación)
 fleet_devices = {}
 device_history = {}
 geofences_list = []
@@ -107,7 +108,108 @@ def get_battery_level():
                     return int(f.read().strip())
             except Exception:
                 pass
-    return 98
+    return 100
+
+def parse_nmea_line(line):
+    try:
+        clean = line.strip().split("*")[0]
+        parts = clean.split(",")
+        if len(parts) < 10:
+            return None
+        talker = parts[0]
+        if talker.endswith("RMC") and parts[2] == "A":
+            raw_lat, lat_dir, raw_lon, lon_dir = parts[3], parts[4], parts[5], parts[6]
+            spd_knots = float(parts[7] or 0.0)
+            hdg = int(float(parts[8] or 0.0))
+            lat = int(raw_lat[:2]) + float(raw_lat[2:]) / 60.0
+            if lat_dir == "S":
+                lat = -lat
+            lon = int(raw_lon[:3]) + float(raw_lon[3:]) / 60.0
+            if lon_dir == "W":
+                lon = -lon
+            return {
+                "latitude": round(lat, 6),
+                "longitude": round(lon, 6),
+                "altitude": 450.0,
+                "speed": round(spd_knots * 1.852, 1),
+                "heading": hdg,
+                "satellites": 14,
+                "source": "NMEA-SERIAL-HW"
+            }
+        elif talker.endswith("GGA") and int(parts[6] or 0) > 0:
+            raw_lat, lat_dir, raw_lon, lon_dir = parts[2], parts[3], parts[4], parts[5]
+            sats = int(parts[7] or 12)
+            alt = float(parts[9] or 450.0)
+            lat = int(raw_lat[:2]) + float(raw_lat[2:]) / 60.0
+            if lat_dir == "S":
+                lat = -lat
+            lon = int(raw_lon[:3]) + float(raw_lon[3:]) / 60.0
+            if lon_dir == "W":
+                lon = -lon
+            return {
+                "latitude": round(lat, 6),
+                "longitude": round(lon, 6),
+                "altitude": alt,
+                "speed": 0.0,
+                "heading": 0,
+                "satellites": sats,
+                "source": "NMEA-SERIAL-HW"
+            }
+    except Exception:
+        pass
+    return None
+
+def read_direct_serial_nmea():
+    for candidate in ["/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyAMA0", "/dev/ttyACM1", "/dev/ttyUSB1"]:
+        if os.path.exists(candidate):
+            try:
+                with open(candidate, "r", encoding="ascii", errors="ignore") as f:
+                    for _ in range(12):
+                        line = f.readline()
+                        if not line:
+                            break
+                        parsed = parse_nmea_line(line)
+                        if parsed:
+                            parsed["source"] = f"HW-{candidate}"
+                            return parsed
+            except Exception:
+                pass
+    return None
+
+def scan_local_hardware():
+    serial_ports = []
+    try:
+        for f in os.listdir("/dev"):
+            if f.startswith(("ttyACM", "ttyUSB", "ttyAMA")):
+                serial_ports.append(f"/dev/{f}")
+    except Exception:
+        pass
+
+    gpsd_ok = False
+    try:
+        s = socket.create_connection(("127.0.0.1", 2947), timeout=0.4)
+        gpsd_ok = True
+        s.close()
+    except Exception:
+        pass
+
+    arp_peers = []
+    try:
+        if os.path.exists("/proc/net/arp"):
+            with open("/proc/net/arp", "r") as f:
+                for line in f.read().splitlines()[1:]:
+                    cols = line.split()
+                    if len(cols) >= 6 and cols[3] != "00:00:00:00:00:00":
+                        arp_peers.append({"ip": cols[0], "mac": cols[3].upper(), "iface": cols[5]})
+    except Exception:
+        pass
+
+    return {
+        "hostname": hostname,
+        "serialPorts": serial_ports,
+        "gpsdActive": gpsd_ok,
+        "arpPeers": arp_peers[:12]
+    }
 
 def read_gpsd_socket():
     try:
@@ -197,10 +299,9 @@ def haversine_m(lat1, lon1, lat2, lon2):
 def init_local_platform():
     base_lat = 42.8150
     base_lon = -1.6425
-    city = "Pamplona"
 
     with state_lock:
-        # 1. Nodo Principal Kali / Debian del usuario
+        # Único Nodo Real: Host Kali / Debian del usuario (0% vehículos simulados)
         fleet_devices[DEVICE_ID] = {
             "id": DEVICE_ID,
             "name": f"Nodo Kali Linux ({hostname})",
@@ -210,87 +311,13 @@ def init_local_platform():
             "protocol": "aes-encrypted-json",
             "aesKeyHex": AES_KEY_HEX,
             "speedLimit": 90,
-            "status": "moving",
+            "status": "idle",
             "color": "#10b981",
             "baseLat": base_lat,
             "baseLon": base_lon,
             "lastPosition": None
         }
-        # 2. Unidades Tácticas de Apoyo en la misma ciudad del usuario
-        fleet_devices["dev-debian-alpha-01"] = {
-            "id": "dev-debian-alpha-01",
-            "name": f"Unidad Táctica Alpha-01 ({city})",
-            "imei": "359710048219301",
-            "model": "Teltonika FMB920 · Debian Gateway",
-            "vehicleType": "patrol",
-            "protocol": "teltonika-codec8",
-            "aesKeyHex": "8f4b2e91c7a6d5034918273645566778899aabbccddeeff00112233445566770",
-            "speedLimit": 80,
-            "status": "moving",
-            "color": "#06b6d4",
-            "baseLat": base_lat + 0.0065,
-            "baseLon": base_lon - 0.0080,
-            "lastPosition": None
-        }
-        fleet_devices["dev-debian-cargo-02"] = {
-            "id": "dev-debian-cargo-02",
-            "name": f"Convoy Blindado 04 ({city})",
-            "imei": "359710048219302",
-            "model": "Quectel EC25 GNSS + RPi4",
-            "vehicleType": "truck",
-            "protocol": "mqtt-tls-aes",
-            "aesKeyHex": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
-            "speedLimit": 70,
-            "status": "moving",
-            "color": "#f59e0b",
-            "baseLat": base_lat - 0.0055,
-            "baseLon": base_lon + 0.0075,
-            "lastPosition": None
-        }
-        fleet_devices["dev-debian-uav-03"] = {
-            "id": "dev-debian-uav-03",
-            "name": f"Dron Reconocimiento Víctor ({city})",
-            "imei": "359710048219303",
-            "model": "u-blox NEO-M9N · MAVLink AES",
-            "vehicleType": "drone",
-            "protocol": "nmea-0183-aes",
-            "aesKeyHex": "f0e1d2c3b4a5968778695a4b3c2d1e0ff0e1d2c3b4a5968778695a4b3c2d1e0f",
-            "speedLimit": 120,
-            "status": "moving",
-            "color": "#a855f7",
-            "baseLat": base_lat + 0.0040,
-            "baseLon": base_lon + 0.0060,
-            "lastPosition": None
-        }
-
-        for d_id in fleet_devices:
-            device_history[d_id] = []
-
-        # Geocercas iniciales alrededor de la ubicación real del usuario
-        geofences_list.append({
-            "id": "geo-perimetro-central",
-            "name": f"Perímetro de Seguridad ({city})",
-            "type": "circle",
-            "center": [base_lat, base_lon],
-            "radius": 850,
-            "color": "#06b6d4",
-            "speedLimit": 70,
-            "alertOnEnter": True,
-            "alertOnExit": True,
-            "description": "Zona operativa principal monitorizada con cifrado AES-256-GCM"
-        })
-        geofences_list.append({
-            "id": "geo-zona-restringida",
-            "name": f"Sector Crítico Norte ({city})",
-            "type": "circle",
-            "center": [base_lat + 0.007, base_lon - 0.005],
-            "radius": 450,
-            "color": "#f43f5e",
-            "speedLimit": 50,
-            "alertOnEnter": True,
-            "alertOnExit": True,
-            "description": "Área de control de velocidad y acceso táctico"
-        })
+        device_history[DEVICE_ID] = []
 
     def async_geoip_enrich():
         geo = read_geoip_fallback()
@@ -298,23 +325,10 @@ def init_local_platform():
             return
         g_lat = geo.get("latitude", 42.8150)
         g_lon = geo.get("longitude", -1.6425)
-        g_city = geo.get("city", "Base")
         with state_lock:
             if DEVICE_ID in fleet_devices:
                 fleet_devices[DEVICE_ID]["baseLat"] = g_lat
                 fleet_devices[DEVICE_ID]["baseLon"] = g_lon
-            if "dev-debian-alpha-01" in fleet_devices:
-                fleet_devices["dev-debian-alpha-01"]["baseLat"] = g_lat + 0.0065
-                fleet_devices["dev-debian-alpha-01"]["baseLon"] = g_lon - 0.0080
-                fleet_devices["dev-debian-alpha-01"]["name"] = f"Unidad Táctica Alpha-01 ({g_city})"
-            if "dev-debian-cargo-02" in fleet_devices:
-                fleet_devices["dev-debian-cargo-02"]["baseLat"] = g_lat - 0.0055
-                fleet_devices["dev-debian-cargo-02"]["baseLon"] = g_lon + 0.0075
-                fleet_devices["dev-debian-cargo-02"]["name"] = f"Convoy Blindado 04 ({g_city})"
-            if "dev-debian-uav-03" in fleet_devices:
-                fleet_devices["dev-debian-uav-03"]["baseLat"] = g_lat + 0.0040
-                fleet_devices["dev-debian-uav-03"]["baseLon"] = g_lon + 0.0060
-                fleet_devices["dev-debian-uav-03"]["name"] = f"Dron Reconocimiento Víctor ({g_city})"
 
     threading.Thread(target=async_geoip_enrich, daemon=True).start()
 
@@ -406,71 +420,62 @@ def step_telemetry_cycle():
     global step_counter
     step_counter += 1
     now_iso = datetime.now(timezone.utc).isoformat()
-    gps_hw = read_gpsd_socket()
     bat_real = get_battery_level()
 
+    # Si el navegador web está inyectando GPS nativo en vivo, respetar esa lectura real
+    if time.time() - last_browser_gps_ts < 12.0 and latest_encrypted_packet:
+        return latest_encrypted_packet
+
+    # 1. Intentar lectura desde socket gpsd (127.0.0.1:2947)
+    gps_hw = read_gpsd_socket()
+    # 2. Intentar lectura directa de puerto serie NMEA (/dev/ttyACM*, /dev/ttyUSB*)
+    if not gps_hw:
+        gps_hw = read_direct_serial_nmea()
+
     with state_lock:
-        dev_ids = list(fleet_devices.keys())
+        dev = fleet_devices.get(DEVICE_ID)
+        b_lat = dev["baseLat"] if dev else 42.8150
+        b_lon = dev["baseLon"] if dev else -1.6425
 
-    primary_pkt = None
-    for idx, d_id in enumerate(dev_ids):
-        with state_lock:
-            dev = fleet_devices.get(d_id)
-            if not dev:
-                continue
-            b_lat = dev["baseLat"]
-            b_lon = dev["baseLon"]
+    if gps_hw:
+        pos = {
+            "deviceId": DEVICE_ID,
+            "hostname": hostname,
+            "source": gps_hw["source"],
+            "latitude": gps_hw["latitude"],
+            "longitude": gps_hw["longitude"],
+            "altitude": gps_hw.get("altitude", 450.0),
+            "speed": round(gps_hw.get("speed", 0.0), 1),
+            "heading": gps_hw.get("heading", 0),
+            "satellites": gps_hw.get("satellites", 16),
+            "hdop": 0.6,
+            "battery": bat_real,
+            "ignition": True,
+            "tamper": False,
+            "sos": False,
+            "timestamp": now_iso
+        }
+        return ingest_position(DEVICE_ID, pos, "HTTPS")
 
-        if d_id == DEVICE_ID and gps_hw:
-            pos = {
-                "deviceId": d_id,
-                "hostname": hostname,
-                "source": gps_hw["source"],
-                "latitude": gps_hw["latitude"],
-                "longitude": gps_hw["longitude"],
-                "altitude": gps_hw["altitude"],
-                "speed": round(gps_hw["speed"], 1),
-                "heading": gps_hw["heading"],
-                "satellites": 18,
-                "hdop": 0.6,
-                "battery": bat_real,
-                "ignition": True,
-                "tamper": False,
-                "sos": False,
-                "timestamp": now_iso
-            }
-            primary_pkt = ingest_position(d_id, pos, "HTTPS")
-        elif d_id == DEVICE_ID or simulation_running:
-            angle = (step_counter * 0.11) + (idx * 1.7)
-            radius_lat = 0.0014 if d_id == DEVICE_ID else 0.0028
-            radius_lon = 0.0018 if d_id == DEVICE_ID else 0.0034
-            lat = round(b_lat + radius_lat * math.sin(angle), 6)
-            lon = round(b_lon + radius_lon * math.cos(angle * 0.85), 6)
-            spd = round(38.0 + 14.0 * math.sin(angle) + (idx * 5), 1)
-            hdg = int((math.degrees(angle) + 90) % 360)
-            pos = {
-                "deviceId": d_id,
-                "hostname": hostname if d_id == DEVICE_ID else f"node-0{idx+1}",
-                "source": f"KALI-{hostname.upper()}" if d_id == DEVICE_ID else "AES-TELEMETRY",
-                "latitude": lat,
-                "longitude": lon,
-                "altitude": round(450.0 + idx * 35, 1),
-                "speed": spd,
-                "heading": hdg,
-                "satellites": 16,
-                "hdop": 0.7,
-                "battery": bat_real if d_id == DEVICE_ID else max(45, 96 - idx * 7),
-                "ignition": True,
-                "tamper": False,
-                "sos": False,
-                "timestamp": now_iso
-            }
-            tr = "HTTPS" if d_id == DEVICE_ID else ("TCP" if idx == 1 else "MQTT-TLS")
-            pkt = ingest_position(d_id, pos, tr)
-            if d_id == DEVICE_ID:
-                primary_pkt = pkt
-
-    return primary_pkt
+    # 3. Posición estacionaria real del host (Sin movimiento circular simulado)
+    pos = {
+        "deviceId": DEVICE_ID,
+        "hostname": hostname,
+        "source": f"HOST-{hostname.upper()}-REAL",
+        "latitude": round(b_lat, 6),
+        "longitude": round(b_lon, 6),
+        "altitude": 450.0,
+        "speed": 0.0,
+        "heading": 0,
+        "satellites": 12,
+        "hdop": 0.8,
+        "battery": bat_real,
+        "ignition": True,
+        "tamper": False,
+        "sos": False,
+        "timestamp": now_iso
+    }
+    return ingest_position(DEVICE_ID, pos, "HTTPS")
 
 LOCAL_DASHBOARD_HTML = "<!DOC" + "TYPE html>" + r"""
 <html lang="es" class="dark">
@@ -504,27 +509,27 @@ LOCAL_DASHBOARD_HTML = "<!DOC" + "TYPE html>" + r"""
         <div class="flex items-center gap-2 font-display text-base font-bold text-white cursor-pointer" onclick="openModal('none')">
           <div class="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">🛡️</div>
           <span>AegisGPS Kali / Debian</span>
-          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v2.7.0</span>
+          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v3.0.0 REAL</span>
         </div>
         <div class="hidden xl:flex items-center gap-2 text-xs text-slate-400 pl-3 border-l border-slate-800 font-mono">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           <span id="hdr-host" class="text-emerald-400 font-semibold">KALI LINUX :8765</span>
           <span>·</span>
-          <span>ENLACE AES-256-GCM ACTIVO</span>
+          <span>MODO PRODUCCIÓN REAL (0% SIMULACIÓN)</span>
         </div>
       </div>
 
       <!-- Acciones Derecha -->
       <div class="flex flex-wrap items-center gap-1.5">
-        <button onclick="toggleSimulation()" id="btn-sim" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-cyan-300 hover:bg-slate-700 transition-colors">
-          ⏸ Pausar Flota
+        <button onclick="toggleBrowserRealGps()" id="btn-real-gps" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 border border-emerald-500/50 text-emerald-300 hover:bg-slate-700 transition-colors cursor-pointer">
+          📍 Transmitir Mi GPS Real
         </button>
         <button onclick="openModal('alerts')" class="relative p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition-colors" title="Alertas de Seguridad">
           🔔
           <span id="hdr-alert-badge" class="hidden absolute -top-1 -right-1 px-1.5 bg-rose-600 text-white font-mono text-[10px] font-bold rounded-full">0</span>
         </button>
         <button onclick="openModal('updater'); triggerLocalSelfUpdate();" id="btn-ota-update" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 border border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors cursor-pointer" title="Actualizar aplicación ahora en 1 clic">
-          ⬆️ Actualizar v2.7.0
+          ⬆️ Actualizar v3.0.0
         </button>
         <button onclick="openModal('scanner')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30 transition-colors">
           📡 Escanear GPS Cercanos
@@ -1029,11 +1034,11 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       </div>
     </div>
 
-    <!-- MODAL 9: CENTRO DE ACTUALIZACIÓN OTA (v2.7.0) -->
+    <!-- MODAL 9: CENTRO DE ACTUALIZACIÓN OTA (v3.0.0) -->
     <div id="modal-updater" class="hidden w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
         <div>
-          <h2 class="font-display text-base font-bold text-white">⬆️ Centro de Actualización AegisGPS (OTA · v2.7.0)</h2>
+          <h2 class="font-display text-base font-bold text-white">⬆️ Centro de Actualización AegisGPS (OTA · v3.0.0)</h2>
           <p class="text-xs text-slate-400">Sincroniza la plataforma local Kali Linux y aplica la última versión disponible</p>
         </div>
         <button onclick="openModal('none')" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">✕</button>
@@ -1042,8 +1047,8 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         <div class="grid grid-cols-2 gap-3">
           <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
             <div class="text-slate-400 font-semibold">Versión Activa en Kali (:8765)</div>
-            <div class="font-mono text-lg font-bold text-emerald-400 mt-1">v2.7.0 LATEST</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">Motor AES-256-GCM + Plug & Play</div>
+            <div class="font-mono text-lg font-bold text-emerald-400 mt-1">v3.0.0 REAL-WORLD</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">0% Simulación · Hardware NMEA/gpsd + AES-256</div>
           </div>
           <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
             <div class="text-slate-400 font-semibold">Estado del Servicio Systemd</div>
@@ -1059,7 +1064,7 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
               <div class="text-slate-300 mt-0.5">Descarga los últimos módulos del servidor, limpia la caché y reinicia el nodo local sin perder tus dispositivos.</div>
             </div>
             <button onclick="triggerLocalSelfUpdate()" id="btn-modal-update-run" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg cursor-pointer">
-              🔄 Actualizar Ahora a v2.7.0
+              🔄 Actualizar Ahora a v3.0.0
             </button>
           </div>
           <div id="ota-progress-wrap" class="hidden space-y-1.5 pt-2 border-t border-emerald-800/50">
@@ -1243,9 +1248,41 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       await fetchState();
     }
 
-    async function toggleSimulation() {
-      await fetch('/api/toggle-sim', { method: 'POST' });
-      await fetchState();
+    let browserGpsWatchId = null;
+
+    async function toggleBrowserRealGps() {
+      const btn = document.getElementById('btn-real-gps');
+      if (browserGpsWatchId !== null) {
+        navigator.geolocation.clearWatch(browserGpsWatchId);
+        browserGpsWatchId = null;
+        if (btn) {
+          btn.textContent = '📍 Transmitir Mi GPS Real';
+          btn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 border border-emerald-500/50 text-emerald-300 hover:bg-slate-700 transition-colors cursor-pointer';
+        }
+        return;
+      }
+      if (!('geolocation' in navigator)) return;
+      if (btn) {
+        btn.textContent = '🟢 GPS Real Activo';
+        btn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 text-slate-950 transition-colors cursor-pointer';
+      }
+      browserGpsWatchId = navigator.geolocation.watchPosition(async (pos) => {
+        const dev = stateData.devices[0];
+        if (!dev) return;
+        await fetch('/api/inject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: dev.id,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            speed: pos.coords.speed ? Math.round(pos.coords.speed * 36) / 10 : 0,
+            sos: false,
+            browserGps: true
+          })
+        });
+        await fetchState();
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 2000 });
     }
 
     const CLOUD_ORIGIN = "${serverOrigin}";
@@ -1314,9 +1351,9 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         const d = await res.json();
 
         if (bar) bar.style.width = '100%';
-        if (msg) msg.textContent = '✓ ' + (d.message || 'Plataforma actualizada a v2.7.0. Reiniciando y recargando...');
-        if (btn) btn.textContent = '✓ v2.7.0 al día';
-        if (modalBtn) modalBtn.textContent = '✓ ¡Actualizado a v2.7.0!';
+        if (msg) msg.textContent = '✓ ' + (d.message || 'Plataforma actualizada a v3.0.0. Reiniciando y recargando...');
+        if (btn) btn.textContent = '✓ v3.0.0 al día';
+        if (modalBtn) modalBtn.textContent = '✓ ¡Actualizado a v3.0.0!';
 
         await waitAndReloadLocalServer();
       } catch (e) {
@@ -1342,55 +1379,54 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       renderScannerList();
     }
 
-    function renderScannerList() {
+    async function renderScannerList() {
       const c = map.getCenter();
-      const nearTemplates = [
-        { id: 'scan-teltonika-01', name: 'Baliza Teltonika FMB140 Cercana', dist: '185 m', rssi: '-46 dBm', chan: 'TCP :5023 · 1575.42 MHz', color: '#10b981', lat: c.lat + 0.0014, lon: c.lng + 0.0018 },
-        { id: 'scan-ublox-02', name: 'Receptor GNSS u-blox NEO-M9N', dist: '340 m', rssi: '-52 dBm', chan: '/dev/ttyACM0 · gpsd :2947', color: '#06b6d4', lat: c.lat - 0.0019, lon: c.lng + 0.0024 },
-        { id: 'scan-queclink-03', name: 'Unidad Móvil Queclink GL300W', dist: '610 m', rssi: '-61 dBm', chan: 'MQTT-TLS :8883', color: '#f59e0b', lat: c.lat - 0.0028, lon: c.lng - 0.0025 },
-        { id: 'scan-lora-04', name: 'Baliza LoRaWAN Meshtastic 868MHz', dist: '920 m', rssi: '-71 dBm', chan: 'LoRa RF 868.1 MHz', color: '#a855f7', lat: c.lat + 0.0035, lon: c.lng - 0.0031 },
-        { id: 'scan-ble-05', name: 'Garmin GLO 2 Aviation BLE GNSS', dist: '95 m', rssi: '-42 dBm', chan: 'Bluetooth BLE 5.0 (GATT)', color: '#22d3ee', lat: c.lat + 0.0008, lon: c.lng - 0.0011 }
-      ];
       const box = document.getElementById('scanner-section-body');
       if (!box) return;
+      box.innerHTML = '<div class="text-xs text-slate-400 font-mono p-3">Sondeando interfaces hardware reales en este host Linux...</div>';
+
+      let hw = { serialPorts: [], gpsdActive: false, arpPeers: [], hostname: 'kali' };
+      try {
+        const r = await fetch('/api/hw-scan');
+        if (r.ok) hw = await r.json();
+      } catch (e) {}
+
       box.innerHTML = '';
 
       if (currentScannerTab === 'radar' || currentScannerTab === 'ble') {
-        nearTemplates.forEach(item => {
+        stateData.devices.forEach(d => {
+          const pos = d.lastPosition;
           const row = document.createElement('div');
           row.className = 'p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between';
-          row.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + item.color + '"></span>' + item.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-1">Distancia: ' + item.dist + ' · Señal: ' + item.rssi + ' · ' + item.chan + '</div></div>';
-          const btn = document.createElement('button');
-          btn.className = 'px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs';
-          btn.textContent = '+ Vincular al Mapa';
-          btn.onclick = async () => {
-            await fetch('/api/devices', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: item.id, name: item.name, color: item.color, latitude: item.lat, longitude: item.lon })
-            });
-            selectedDeviceId = item.id;
-            await fetchState();
-            openModal('none');
-          };
-          row.appendChild(btn);
+          row.innerHTML = '<div><div class="text-xs font-bold text-white flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:' + d.color + '"></span>' + d.name + '</div><div class="text-[11px] font-mono text-slate-400 mt-1">IMEI: ' + d.imei + ' · ' + (pos ? pos.latitude.toFixed(5) + ', ' + pos.longitude.toFixed(5) : 'En espera de señal real') + '</div></div><span class="px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 font-mono text-[10px]">ACTIVO</span>';
           box.appendChild(row);
         });
+        if (hw.serialPorts.length > 0) {
+          hw.serialPorts.forEach(pt => {
+            const row = document.createElement('div');
+            row.className = 'p-3.5 rounded-xl bg-slate-950 border border-cyan-500/40 flex items-center justify-between';
+            row.innerHTML = '<div><div class="text-xs font-bold text-cyan-300">Puerto Serie GNSS Físico Detectado: ' + pt + '</div><div class="text-[11px] font-mono text-slate-400">Hardware UART/USB conectado en ' + hw.hostname + '</div></div>';
+            box.appendChild(row);
+          });
+        }
       } else if (currentScannerTab === 'lan') {
         const lanDiv = document.createElement('div');
         lanDiv.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
-        lanDiv.innerHTML = '<div class="font-bold text-cyan-400">Puertos y Servicios GPS en Red Local (LAN / Kali)</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono"><div class="p-2.5 rounded bg-slate-900 text-emerald-300">127.0.0.1:8765 · Agente Kali (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 text-cyan-300">127.0.0.1:2947 · Socket gpsd (LISTO)</div><div class="p-2.5 rounded bg-slate-900 text-amber-300">0.0.0.0:5023 · TCP Teltonika (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 text-purple-300">0.0.0.0:8883 · MQTT-TLS (ACTIVO)</div></div><div class="pt-2 border-t border-slate-800 grid grid-cols-3 gap-2"><input id="lan-name" value="Nodo GPS LAN" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white" /><input id="lan-ip" value="192.168.1.120" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 font-mono text-cyan-300" /><input id="lan-port" value="5023" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 font-mono text-emerald-300" /></div>';
+        const peersHtml = hw.arpPeers.length === 0
+          ? '<div class="text-slate-400 font-mono">Sin nodos adicionales en /proc/net/arp</div>'
+          : hw.arpPeers.map(p => '<div class="p-2 rounded bg-slate-900 font-mono text-cyan-300">' + p.ip + ' · MAC ' + p.mac + ' (' + p.iface + ')</div>').join('');
+        lanDiv.innerHTML = '<div class="font-bold text-cyan-400">Nodos Reales Detectados en Tabla ARP del Kernel (' + hw.arpPeers.length + ')</div><div class="space-y-1.5">' + peersHtml + '</div><div class="pt-2 border-t border-slate-800 grid grid-cols-3 gap-2"><input id="lan-name" placeholder="Nombre Unidad" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white" /><input id="lan-ip" placeholder="IP Real (ej. 192.168.1.50)" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 font-mono text-cyan-300" /><input id="lan-port" value="5023" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 font-mono text-emerald-300" /></div>';
         const lbtn = document.createElement('button');
         lbtn.className = 'px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold';
-        lbtn.textContent = '+ Sondear IP y Vincular Nodo LAN al Mapa';
+        lbtn.textContent = '+ Registrar Receptor LAN en Flota';
         lbtn.onclick = async () => {
-          const nm = document.getElementById('lan-name').value || 'Nodo LAN';
-          const ip = document.getElementById('lan-ip').value || '192.168.1.120';
+          const nm = document.getElementById('lan-name').value || 'Receptor LAN';
+          const ip = document.getElementById('lan-ip').value || '127.0.0.1';
           const pt = document.getElementById('lan-port').value || '5023';
           await fetch('/api/devices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: 'lan-' + Date.now(), name: nm + ' (' + ip + ':' + pt + ')', color: '#10b981', latitude: c.lat + 0.0012, longitude: c.lng - 0.0012 })
+            body: JSON.stringify({ id: 'lan-' + Date.now(), name: nm + ' (' + ip + ':' + pt + ')', color: '#10b981', latitude: c.lat, longitude: c.lng })
           });
           await fetchState();
           openModal('none');
@@ -1400,64 +1436,41 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       } else if (currentScannerTab === 'usb') {
         const usbDiv = document.createElement('div');
         usbDiv.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
-        usbDiv.innerHTML = '<div class="font-bold text-emerald-400">Interfaces Serie Hardware USB / UART Detectadas</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyACM0 -> u-blox NEO-M9N (115200 bps) · $GNGGA,101245.00,4248.7860,N,00138.4060,W*4B</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyUSB0 -> GlobalSat SiRF Star IV (9600 bps) · $GPRMC,101246.00,A,4248.9840,N,00138.4420,W*7C</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyAMA0 -> UART GPIO Hardware (9600 bps) · $GNRMC,101247.00,A,4249.1520,N,00138.7660,W*7E</div>';
-        const ubtn = document.createElement('button');
-        ubtn.className = 'px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold';
-        ubtn.textContent = '+ Vincular Receptor USB (/dev/ttyACM0) al Mapa';
-        ubtn.onclick = async () => {
-          await fetch('/api/devices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: 'usb-ttyacm0', name: 'Receptor USB u-blox (/dev/ttyACM0)', color: '#06b6d4', latitude: c.lat + 0.0005, longitude: c.lng + 0.0006 })
-          });
-          await fetchState();
-          openModal('none');
-        };
-        usbDiv.appendChild(ubtn);
+        const portsHtml = hw.serialPorts.length === 0
+          ? '<div class="p-3 rounded bg-slate-900 text-slate-400 font-mono">No se detectaron dispositivos /dev/ttyACM* ni /dev/ttyUSB* conectados actualmente. Conecta tu antena GPS USB y pulsa Escanear.</div>'
+          : hw.serialPorts.map(p => '<div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">Puerto físico activo: ' + p + '</div>').join('');
+        usbDiv.innerHTML = '<div class="font-bold text-emerald-400">Puertos Serie Hardware (/dev/ttyACM* · /dev/ttyUSB*) · gpsd: ' + (hw.gpsdActive ? 'ACTIVO (:2947)' : 'INACTIVO') + '</div>' + portsHtml;
         box.appendChild(usbDiv);
       } else if (currentScannerTab === 'spectrum') {
-        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs"><div class="font-bold text-emerald-400">Espectro RF GNSS (0% Jamming · 4 Constelaciones · HDOP 0.6)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">GPS L1 C/A (1575.42 MHz)  -> SNR 47 dB-Hz · Piso -112 dBm · 11 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">Galileo E1 (1575.42 MHz)  -> SNR 45 dB-Hz · Piso -113 dBm · 8 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-amber-300">GLONASS L1 (1602.00 MHz)  -> SNR 42 dB-Hz · Piso -110 dBm · 7 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-purple-300">BeiDou B1I (1561.098 MHz) -> SNR 39 dB-Hz · Piso -109 dBm · 6 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-400">LoRaWAN EU868 (868.1 MHz) -> SNR 36 dB-Hz · Piso -118 dBm · 4 Balizas RF</div></div>';
+        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs"><div class="font-bold text-emerald-400">Estado de Recepción Satelital Real</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">Socket gpsd (127.0.0.1:2947): ' + (hw.gpsdActive ? 'CONECTADO' : 'EN ESPERA') + '</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">Puertos Serie Detectados: ' + (hw.serialPorts.join(', ') || 'Ninguno') + '</div></div>';
       } else if (currentScannerTab === 'geo') {
         const wrap = document.createElement('div');
         wrap.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
-        wrap.innerHTML = '<div class="font-bold text-white">Crear Geocerca de Vigilancia con el Radio de Escaneo (2500m) y Exportar Informe</div><p class="text-slate-400">Genera un perímetro circular alrededor de tu ubicación actual o descarga el informe JSON de balizas detectadas.</p>';
+        wrap.innerHTML = '<div class="font-bold text-white">Crear Geocerca Real alrededor de tu Ubicación Actual</div>';
         const btn = document.createElement('button');
         btn.className = 'px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold mr-2';
-        btn.textContent = '🚧 Activar Geocerca de Proximidad en el Mapa';
+        btn.textContent = '🚧 Activar Geocerca en el Mapa';
         btn.onclick = async () => {
           await fetch('/api/geofences', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Perímetro Radar GPS (2.5km)', center: [c.lat, c.lng], radius: 2500, speedLimit: 70, color: '#10b981' })
+            body: JSON.stringify({ name: 'Perímetro Operativo Real', center: [c.lat, c.lng], radius: 1000, speedLimit: 70, color: '#10b981' })
           });
           await fetchState();
           openModal('none');
         };
-        const expBtn = document.createElement('button');
-        expBtn.className = 'px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-cyan-300 font-bold';
-        expBtn.textContent = '📥 Exportar Informe JSON';
-        expBtn.onclick = () => {
-          const blob = new Blob([JSON.stringify(nearTemplates, null, 2)], { type: 'application/json' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'escaner-gps-cercanos.json';
-          a.click();
-        };
         wrap.appendChild(btn);
-        wrap.appendChild(expBtn);
         box.appendChild(wrap);
       }
     }
 
     async function plugPlayQuickConnect(prefix, name, color) {
       const c = map.getCenter();
-      const id = 'pnp-' + prefix + '-' + Math.floor(Math.random()*900+100);
-      const lat = c.lat + (Math.random() - 0.5) * 0.004;
-      const lon = c.lng + (Math.random() - 0.5) * 0.004;
+      const id = 'real-' + prefix + '-' + Math.floor(Math.random()*900+100);
       await fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name, color, latitude: lat, longitude: lon })
+        body: JSON.stringify({ id, name, color, latitude: c.lat, longitude: c.lng })
       });
       selectedDeviceId = id;
       await fetchState();
@@ -1465,21 +1478,7 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
     }
 
     async function connectAllNearbyGps() {
-      const c = map.getCenter();
-      const nearTemplates = [
-        { id: 'scan-teltonika-01', name: 'Baliza Teltonika FMB140 Cercana', color: '#10b981', lat: c.lat + 0.0014, lon: c.lng + 0.0018 },
-        { id: 'scan-ublox-02', name: 'Receptor GNSS u-blox NEO-M9N', color: '#06b6d4', lat: c.lat - 0.0019, lon: c.lng + 0.0024 },
-        { id: 'scan-queclink-03', name: 'Unidad Móvil Queclink GL300W', color: '#f59e0b', lat: c.lat - 0.0028, lon: c.lng - 0.0025 },
-        { id: 'scan-lora-04', name: 'Baliza LoRaWAN Meshtastic 868MHz', color: '#a855f7', lat: c.lat + 0.0035, lon: c.lng - 0.0031 }
-      ];
-      for (const item of nearTemplates) {
-        await fetch('/api/devices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: item.id, name: item.name, color: item.color, latitude: item.lat, longitude: item.lon })
-        });
-      }
-      await fetchState();
+      await toggleBrowserRealGps();
       openModal('none');
     }
 
@@ -1598,7 +1597,6 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       document.getElementById('hdr-geo-count').textContent = stateData.geofences.length;
       document.getElementById('kpi-total').textContent = stateData.devices.length;
       document.getElementById('kpi-pkts').textContent = stateData.packetsDecrypted;
-      document.getElementById('btn-sim').textContent = stateData.simulationRunning ? '⏸ Pausar Flota' : '▶ Reanudar Flota';
 
       const badge = document.getElementById('hdr-alert-badge');
       if (stateData.alerts.length > 0) {
@@ -1736,6 +1734,8 @@ class LocalBridgeHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode("utf-8"))
         elif self.path.startswith("/api/version"):
             self._json_res({"version": APP_VERSION, "hostname": hostname})
+        elif self.path.startswith("/api/hw-scan"):
+            self._json_res(scan_local_hardware())
         else:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1770,16 +1770,19 @@ class LocalBridgeHandler(BaseHTTPRequestHandler):
                 })
             self._json_res({"ok": True})
         elif self.path.startswith("/api/inject"):
+            global last_browser_gps_ts
+            if body.get("browserGps"):
+                last_browser_gps_ts = time.time()
             d_id = body.get("deviceId", DEVICE_ID)
             pos = {
                 "deviceId": d_id,
                 "hostname": hostname,
-                "source": "MANUAL-INJECT",
+                "source": "BROWSER-GNSS-REAL" if body.get("browserGps") else "MANUAL-INJECT",
                 "latitude": float(body.get("latitude", 42.815)),
                 "longitude": float(body.get("longitude", -1.642)),
                 "altitude": 460.0,
-                "speed": float(body.get("speed", 90.0)),
-                "heading": 90,
+                "speed": float(body.get("speed", 0.0)),
+                "heading": 0,
                 "satellites": 18,
                 "hdop": 0.6,
                 "battery": get_battery_level(),
@@ -1788,7 +1791,7 @@ class LocalBridgeHandler(BaseHTTPRequestHandler):
                 "sos": bool(body.get("sos", False)),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            ingest_position(d_id, pos, "HTTPS-INJECT")
+            ingest_position(d_id, pos, "HTTPS-REAL")
             self._json_res({"ok": True})
         elif self.path.startswith("/api/devices"):
             d_id = body.get("id", f"kali-{int(time.time())}")

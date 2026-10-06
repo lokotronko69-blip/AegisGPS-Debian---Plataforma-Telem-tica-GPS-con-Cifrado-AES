@@ -473,16 +473,16 @@ export default function App() {
     );
   };
 
-  // Handle Simulation Toggle
-  const handleToggleSimulation = async () => {
+  // Delete Device Handler (Real-World Fleet Management)
+  const handleDeleteDevice = async (deviceId: string) => {
     try {
-      const res = await fetch('/api/simulation/toggle', { method: 'POST' });
+      const res = await fetch(`/api/devices/${deviceId}`, { method: 'DELETE' });
       if (res.ok) {
-        const data = await res.json();
-        setStats((prev) => prev ? { ...prev, simulationRunning: data.simulationRunning } : null);
+        setDevices((prev) => prev.filter((d) => d.id !== deviceId));
+        setSelectedDevice((prev) => (prev?.id === deviceId ? null : prev));
       }
     } catch (err) {
-      console.error('Error toggling simulation:', err);
+      console.error('Error deleting device:', err);
     }
   };
 
@@ -564,7 +564,8 @@ export default function App() {
           stats={stats}
           audioEnabled={audioEnabled}
           onToggleAudio={() => setAudioEnabled(!audioEnabled)}
-          onToggleSimulation={handleToggleSimulation}
+          realGpsActive={realGpsActive}
+          onToggleRealGps={handleToggleRealGps}
           unreadAlertsCount={unreadAlertsCount}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
           onOpenRegisterDevice={() => setIsRegisterOpen(true)}
@@ -610,6 +611,7 @@ export default function App() {
               onSelectDevice={setSelectedDevice}
               onOpenHistory={handleOpenHistory}
               onOpenCrypto={() => setCurrentTab('crypto')}
+              onDeleteDevice={handleDeleteDevice}
               isCollapsed={sidebarCollapsed}
               onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
               realGpsActive={realGpsActive}
@@ -694,8 +696,6 @@ export default function App() {
         onOpenTab={(tab) => setCurrentTab(tab)}
         onToggleRealGps={handleToggleRealGps}
         realGpsActive={realGpsActive}
-        onToggleSimulation={handleToggleSimulation}
-        simulationRunning={stats?.simulationRunning}
       />
 
       <HistoryPlaybackModal

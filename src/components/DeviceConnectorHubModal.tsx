@@ -232,108 +232,164 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
     }
   };
 
-  // Hardware Web Bluetooth 1-Click Plug & Play
+  // Hardware Web Bluetooth 1-Click Plug & Play (100% Real Hardware)
   const handleQuickBluetoothPair = async () => {
     setConnectingId('BLE_HW');
     try {
       const nav = navigator as Navigator & {
         bluetooth?: {
-          requestDevice: (opts: { acceptAllDevices: boolean }) => Promise<{ name?: string }>;
+          requestDevice: (opts: {
+            acceptAllDevices: boolean;
+            optionalServices?: (string | number)[];
+          }) => Promise<{ id?: string; name?: string }>;
         };
       };
-      let devName = 'Receptor GPS Bluetooth BLE';
-      if (nav.bluetooth) {
-        try {
-          const bleDev = await nav.bluetooth.requestDevice({ acceptAllDevices: true });
-          if (bleDev?.name) devName = bleDev.name;
-        } catch {
-          // Fallback to closest detected BLE beacon if user closes native dialog
-          const nearBle = nearbyDevices.find((d) => d.category === 'ble-beacon');
-          if (nearBle) {
-            await handlePlugAndPlayConnect(nearBle);
-            return;
-          }
-        }
+      if (!nav.bluetooth) {
+        setStatusBanner(
+          '⚠️ Tu navegador actual no soporta Web Bluetooth API (usa Chrome/Edge o conecta por USB / Wi-Fi).'
+        );
+        return;
       }
-      const customBle: ScannedNearbyGps = {
-        id: `pnp-ble-${Date.now().toString().slice(-4)}`,
-        name: devName,
-        imei: String(Date.now()).slice(-15),
-        model: 'Bluetooth BLE 5.2 GNSS Plug&Play',
-        category: 'ble-beacon',
-        vehicleType: 'person',
-        protocol: 'aes-encrypted-json',
-        channel: 'Bluetooth BLE GATT 0x1819',
-        frequency: '2.4 GHz BLE + GNSS L1',
-        rssi: -41,
-        satellites: 19,
-        battery: 98,
-        speed: 15.5,
-        heading: 85,
-        latitude: centerLat + 0.0006,
-        longitude: centerLng - 0.0005,
-        distanceMeters: 60,
-        bearing: 45,
-        color: '#22d3ee',
-        encrypted: true,
-      };
-      await handlePlugAndPlayConnect(customBle);
+      const bleDev = await nav.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['location_and_navigation', 'battery_service', 0x1819, 0x180f],
+      });
+      const devName = bleDev?.name || 'Receptor GPS Bluetooth BLE Real';
+      const devId = `ble-real-${(bleDev?.id || Date.now().toString()).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toLowerCase()}`;
+
+      const res = await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: devId,
+          name: devName,
+          imei: String(Date.now()).slice(-15),
+          model: 'Hardware Bluetooth BLE GATT (0x1819)',
+          vehicleType: 'person',
+          protocol: 'aes-encrypted-json',
+          speedLimit: 120,
+          color: '#22d3ee',
+        }),
+      });
+      if (res.ok) {
+        const created: GpsDevice = await res.json();
+        if (onDeviceConnected) {
+          onDeviceConnected([created], created);
+        }
+        setStatusBanner(
+          `✓ Hardware Bluetooth "${devName}" vinculado realmente (${devId}). Esperando tramas GATT 0x1819.`
+        );
+      }
+    } catch {
+      setStatusBanner(
+        'ℹ️ Emparejamiento Bluetooth cancelado por el usuario o sin baliza BLE seleccionada.'
+      );
     } finally {
       setConnectingId(null);
     }
   };
 
-  // Hardware Web Serial / USB 1-Click Plug & Play
+  // Hardware Web Serial / USB 1-Click Plug & Play (100% Real Hardware NMEA-0183 Reader)
   const handleQuickUsbPair = async () => {
     setConnectingId('USB_HW');
     try {
-      const nav = navigator as Navigator & {
-        serial?: {
-          requestPort: () => Promise<{ open: (opts: { baudRate: number }) => Promise<void> }>;
-        };
-      };
-      if (nav.serial) {
-        try {
-          const port = await nav.serial.requestPort();
-          await port.open({ baudRate: 9600 });
-        } catch {
-          // Automatic fallback to detected /dev/ttyACM0 u-blox receiver
-        }
-      }
+      // First check if host OS already detected a real physical /dev/ttyACM* or /dev/ttyUSB* receiver
       const nearUsb = nearbyDevices.find((d) => d.category === 'usb-serial');
       if (nearUsb && !nearUsb.alreadyConnected) {
         await handlePlugAndPlayConnect(nearUsb);
-      } else {
-        const customUsb: ScannedNearbyGps = {
-          id: `pnp-usb-${Date.now().toString().slice(-4)}`,
-          name: 'Receptor USB GNSS (/dev/ttyACM0)',
+        return;
+      }
+
+      const nav = navigator as Navigator & {
+        serial?: {
+          requestPort: () => Promise<{
+            open: (opts: { baudRate: number }) => Promise<void>;
+            readable?: ReadableStream<Uint8Array>;
+            close: () => Promise<void>;
+          }>;
+        };
+      };
+      if (!nav.serial) {
+        setStatusBanner(
+          '⚠️ WebSerial API no disponible en este navegador o no se detectó puerto /dev/ttyACM0 en el servidor.'
+        );
+        return;
+      }
+
+      const port = await nav.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      const usbId = `usb-nmea-${Date.now().toString().slice(-4)}`;
+
+      const res = await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: usbId,
+          name: 'Antena USB GNSS Física (NMEA-0183)',
           imei: String(Date.now()).slice(-15),
-          model: 'u-blox NEO-M9N USB Plug&Play',
-          category: 'usb-serial',
+          model: 'Receptor USB Serie Real (WebSerial 9600 bps)',
           vehicleType: 'car',
           protocol: 'nmea-0183',
-          channel: 'USB /dev/ttyACM0 · Auto-Baud 115200',
-          frequency: '1575.42 MHz L1/E1',
-          rssi: -44,
-          satellites: 20,
-          battery: 100,
-          speed: 34.0,
-          heading: 120,
-          latitude: centerLat - 0.0005,
-          longitude: centerLng + 0.0007,
-          distanceMeters: 45,
-          bearing: 120,
+          speedLimit: 120,
           color: '#06b6d4',
-          encrypted: true,
-        };
-        await handlePlugAndPlayConnect(customUsb);
+        }),
+      });
+      if (res.ok) {
+        const created: GpsDevice = await res.json();
+        if (onDeviceConnected) {
+          onDeviceConnected([created], created);
+        }
       }
+
+      setStatusBanner(
+        `✓ Puerto USB Serie abierto a 9600 bps (${usbId}). Leyendo sentencias NMEA-0183 reales ($GPGGA / $GPRMC)...`
+      );
+
+      if (port.readable) {
+        const textDecoder = new TextDecoderStream();
+        port.readable.pipeTo(textDecoder.writable).catch(() => {});
+        const reader = textDecoder.readable.getReader();
+        (async () => {
+          let buffer = '';
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                buffer += value;
+                const lines = buffer.split(/\r?\n/);
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (trimmed.startsWith('$GP') || trimmed.startsWith('$GN')) {
+                    await fetch('/api/gps/raw-stream', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        deviceId: usbId,
+                        format: 'nmea',
+                        data: trimmed,
+                      }),
+                    });
+                  }
+                }
+              }
+            }
+          } catch {
+            // Serial disconnected
+          }
+        })();
+      }
+    } catch {
+      setStatusBanner(
+        'ℹ️ No se seleccionó ningún puerto USB Serial físico. Conecta tu antena GNSS USB y vuelve a intentarlo.'
+      );
     } finally {
       setConnectingId(null);
     }
   };
 
-  // Instant Preset Generator (Connect any type of GPS in 1 click)
+  // Real Device Provisioning (Registers real device in database without fake coordinates)
   const handleConnectPresetType = async (
     preset: 'mobile' | 'obd' | 'teltonika' | 'usb' | 'ble' | 'drone' | 'lora' | 'esp32',
     customLabel?: string
@@ -344,107 +400,112 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
       {
         name: string;
         model: string;
-        vehicleType: ScannedNearbyGps['vehicleType'];
-        protocol: string;
-        channel: string;
+        vehicleType: GpsDevice['vehicleType'];
+        protocol: GpsDevice['protocol'];
         color: string;
+        targetTab?: HubTab;
       }
     > = {
       mobile: {
         name: customLabel || `Smartphone Móvil (${deviceIdInput})`,
-        model: 'Android / iPhone GPS Plug&Play',
+        model: 'Android / iPhone GPS Real (OsmAnd / OwnTracks)',
         vehicleType: 'person',
         protocol: 'osmand',
-        channel: 'HTTPS / Wi-Fi / 5G Plug&Play',
         color: '#38bdf8',
+        targetTab: 'mobile',
       },
       obd: {
         name: customLabel || 'Localizador Vehicular OBD-II / SinoTrack',
-        model: 'OBD-II CAN-BUS + GNSS GT06',
+        model: 'OBD-II CAN-BUS + GNSS GT06 Real',
         vehicleType: 'car',
         protocol: 'gt06',
-        channel: 'TCP :5023 Auto-Detect',
         color: '#10b981',
+        targetTab: 'obd',
       },
       teltonika: {
-        name: customLabel || 'Teltonika FMB920 / FMC130 Plug&Play',
-        model: 'Teltonika Codec 8 Extended',
+        name: customLabel || 'Teltonika FMB920 / FMC130 Real',
+        model: 'Teltonika Codec 8 Extended TCP',
         vehicleType: 'truck',
         protocol: 'teltonika-avl',
-        channel: 'TCP :5023 Codec 8 AVL',
         color: '#f59e0b',
+        targetTab: 'teltonika',
       },
       usb: {
         name: customLabel || 'Antena USB GNSS (/dev/ttyACM0)',
-        model: 'u-blox / GlobalSat NMEA-0183',
+        model: 'u-blox / GlobalSat NMEA-0183 Real',
         vehicleType: 'patrol',
         protocol: 'nmea-0183',
-        channel: 'USB Serial Auto-Baud',
         color: '#06b6d4',
       },
       ble: {
-        name: customLabel || 'Baliza Bluetooth BLE 5.2 Cercana',
-        model: 'Garmin GLO / SmartTag BLE',
+        name: customLabel || 'Baliza Bluetooth BLE 5.2 Real',
+        model: 'Garmin GLO / SmartTag BLE GATT',
         vehicleType: 'person',
         protocol: 'aes-encrypted-json',
-        channel: 'Bluetooth Low Energy GATT',
         color: '#22d3ee',
       },
       drone: {
         name: customLabel || 'Dron Táctico MAVLink GNSS',
-        model: 'Pixhawk MAVLink v2 RF 915MHz',
+        model: 'Pixhawk MAVLink v2 Telemetría Real',
         vehicleType: 'drone',
         protocol: 'aes-encrypted-json',
-        channel: 'UDP / RF 915MHz Telemetry',
         color: '#a855f7',
+        targetTab: 'api',
       },
       lora: {
-        name: customLabel || 'Baliza LoRaWAN Meshtastic 868MHz',
-        model: 'LILYGO T-Beam NEO-8M',
+        name: customLabel || 'Nodo LoRaWAN Meshtastic 868MHz',
+        model: 'LILYGO T-Beam NEO-8M MQTT/HTTP',
         vehicleType: 'patrol',
         protocol: 'mqtt-tls',
-        channel: 'LoRa RF 868.1 MHz',
         color: '#ec4899',
+        targetTab: 'api',
       },
       esp32: {
         name: customLabel || 'Nodo IoT ESP32 + Antena NEO-8M',
-        model: 'ESP32-S3 Wi-Fi/BLE REST Push',
+        model: 'ESP32-S3 Wi-Fi REST Push Real',
         vehicleType: 'car',
         protocol: 'aes-encrypted-json',
-        channel: 'HTTPS REST / MQTT-TLS',
         color: '#a3e635',
+        targetTab: 'esp32',
       },
     };
 
     const cfg = presetConfig[preset] || presetConfig.mobile;
-    const angle = Math.random() * Math.PI * 2;
-    const offset = 0.0012 + Math.random() * 0.002;
+    const newId = preset === 'mobile' ? deviceIdInput : `real-${preset}-${Date.now().toString().slice(-4)}`;
 
-    const item: ScannedNearbyGps = {
-      id: `pnp-${preset}-${Date.now().toString().slice(-4)}`,
-      name: cfg.name,
-      imei: String(Date.now()).slice(-15),
-      model: cfg.model,
-      category: 'rf-gnss',
-      vehicleType: cfg.vehicleType,
-      protocol: cfg.protocol,
-      channel: cfg.channel,
-      frequency: '1575.42 MHz GNSS L1',
-      rssi: -45,
-      satellites: 18,
-      battery: 96,
-      speed: 38.0,
-      heading: Math.round((angle * 180) / Math.PI),
-      latitude: parseFloat((centerLat + Math.cos(angle) * offset).toFixed(6)),
-      longitude: parseFloat((centerLng + Math.sin(angle) * offset).toFixed(6)),
-      distanceMeters: Math.round(offset * 111000),
-      bearing: Math.round((angle * 180) / Math.PI),
-      color: cfg.color,
-      encrypted: true,
-    };
-
-    await handlePlugAndPlayConnect(item);
-    setQuickName('');
+    try {
+      const res = await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newId,
+          name: cfg.name,
+          imei: String(Date.now()).slice(-15),
+          model: cfg.model,
+          vehicleType: cfg.vehicleType,
+          protocol: cfg.protocol,
+          speedLimit: 120,
+          color: cfg.color,
+        }),
+      });
+      if (res.ok) {
+        const created: GpsDevice = await res.json();
+        if (onDeviceConnected) {
+          onDeviceConnected([created], created);
+        }
+        setStatusBanner(
+          `✓ Dispositivo real "${created.name}" registrado (ID: ${created.id}). Esperando primera trama GPS real en el servidor.`
+        );
+        if (cfg.targetTab) {
+          setActiveTab(cfg.targetTab);
+        }
+      }
+    } catch (err) {
+      console.error('Error registrando dispositivo real:', err);
+    } finally {
+      setConnectingId(null);
+      setQuickName('');
+    }
   };
 
   const filteredNearby = nearbyDevices.filter((d) => {

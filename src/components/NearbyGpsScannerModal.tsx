@@ -278,144 +278,189 @@ export const NearbyGpsScannerModal: React.FC<NearbyGpsScannerModalProps> = ({
     }
   };
 
-  // Probe & Connect Custom LAN GPS Node
+  // Probe & Register Custom Real LAN GPS Node
   const handleProbeLanNode = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLanProbeStatus(`Sondeando ${customLanIp}:${customLanPort}...`);
+    setLanProbeStatus(`Registrando receptor LAN real en ${customLanIp}:${customLanPort}...`);
     const customGps: ScannedNearbyGps = {
-      id: `scan-lan-${Date.now().toString().slice(-4)}`,
+      id: `lan-${customLanIp.replace(/[^a-zA-Z0-9]/g, '-')}-${customLanPort}`,
       name: `${customLanName} (${customLanIp}:${customLanPort})`,
       imei: String(Date.now()).slice(-15),
-      model: `Nodo GPS LAN TCP/IP :${customLanPort}`,
+      model: `Receptor LAN TCP/IP ${customLanIp}:${customLanPort}`,
       category: 'lan-tcp',
       vehicleType: 'patrol',
       protocol: 'aes-encrypted-json',
       channel: `LAN TCP ${customLanIp}:${customLanPort}`,
-      frequency: 'Ethernet / Wi-Fi LAN + GNSS',
-      rssi: -38,
-      snrDbHz: 49,
-      satellites: 18,
-      hdop: 0.6,
-      altitude: 450,
+      frequency: 'Ethernet / Wi-Fi LAN',
+      rssi: -45,
+      snrDbHz: 45,
+      satellites: 0,
+      hdop: 0.8,
+      altitude: 0,
       battery: 100,
-      speed: 36.5,
-      heading: 90,
-      latitude: centerLat + 0.0011,
-      longitude: centerLng - 0.0012,
-      distanceMeters: 140,
-      bearing: 315,
+      speed: 0,
+      heading: 0,
+      latitude: centerLat,
+      longitude: centerLng,
+      distanceMeters: 0,
+      bearing: 0,
       color: '#10b981',
       encrypted: true,
-      constellations: ['GPS L1', 'Galileo E1'],
+      constellations: ['LAN / TCP'],
       ipAddress: `${customLanIp}:${customLanPort}`,
-      macAddress: 'LAN-SOCKET-VERIFIED',
-      nmeaSample: '$GNRMC,101500.00,A,4248.9600,N,00138.6200,W,19.7,90.0,051026,,,A*71',
+      macAddress: 'LAN-HOST',
+      nmeaSample: `Nodo registrado (${customLanIp}:${customLanPort}) en espera de tramas reales`,
       alreadyConnected: false,
     };
     setDiscovered((prev) => [customGps, ...prev]);
     await handleConnectSingle(customGps);
-    setLanProbeStatus(`✓ Nodo ${customLanIp}:${customLanPort} vinculado al mapa con cifrado AES-256-GCM.`);
+    setLanProbeStatus(`✓ Nodo ${customLanIp}:${customLanPort} registrado en flota real.`);
   };
 
-  // Connect WebSerial USB/UART Hardware Port
+  // Connect Real WebSerial USB/UART Hardware Port & Stream Live NMEA-0183
   const handleWebSerialScan = async () => {
-    setUsbStatus('Solicitando acceso a puerto USB/UART mediante WebSerial API...');
+    const nav = navigator as Navigator & {
+      serial?: {
+        requestPort: () => Promise<{
+          open: (opts: { baudRate: number }) => Promise<void>;
+          readable?: ReadableStream<Uint8Array>;
+        }>;
+      };
+    };
+
+    if (!nav.serial) {
+      setUsbStatus(
+        'Tu navegador actual no soporta WebSerial API (usa Chrome/Edge sobre HTTPS o localhost, o conecta tu GPS por gpsd en Kali Linux).'
+      );
+      return;
+    }
+
     try {
-      const nav = navigator as Navigator & {
-        serial?: {
-          requestPort: () => Promise<unknown>;
-        };
-      };
-      if (nav.serial) {
-        await nav.serial.requestPort();
+      setUsbStatus('Selecciona tu receptor GPS USB/UART físico en la ventana del navegador...');
+      const port = await nav.serial.requestPort();
+      const baud = parseInt(usbBaudRate, 10) || 9600;
+      await port.open({ baudRate: baud });
+
+      const devId = `usb-webserial-${baud}`;
+      setUsbStatus(`✓ Puerto serie físico abierto a ${baud} bps. Escuchando sentencias NMEA-0183 reales...`);
+
+      if (port.readable) {
+        const reader = port.readable.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        (async () => {
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split(/\r?\n/);
+              buffer = lines.pop() || '';
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('$GP') || trimmed.startsWith('$GN')) {
+                  setUsbStatus(`📡 Trama NMEA Real recibida (${baud} bps): ${trimmed}`);
+                  const r = await fetch('/api/gps/raw-stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      deviceId: devId,
+                      deviceName: `Receptor USB NMEA (${baud} bps)`,
+                      format: 'nmea',
+                      data: trimmed,
+                    }),
+                  });
+                  if (r.ok) {
+                    const d = await r.json();
+                    if (d.device) {
+                      onDeviceConnected([d.device], d.device);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (readErr) {
+            console.error('Error leyendo puerto serie USB:', readErr);
+          } finally {
+            reader.releaseLock();
+          }
+        })();
       }
-      const serialGps: ScannedNearbyGps = {
-        id: `scan-usb-${Date.now().toString().slice(-4)}`,
-        name: `Receptor USB Serial (${usbBaudRate} bps)`,
-        imei: String(Date.now()).slice(-15),
-        model: `Receptor GNSS USB/UART (${usbBaudRate} baud)`,
-        category: 'usb-serial',
-        vehicleType: 'car',
-        protocol: 'nmea-0183-aes',
-        channel: `/dev/ttyACM0 · ${usbBaudRate} 8N1`,
-        frequency: '1575.42 MHz L1 Hardware UART',
-        rssi: -35,
-        snrDbHz: 50,
-        satellites: 20,
-        hdop: 0.5,
-        altitude: 449,
-        battery: 100,
-        speed: 25.0,
-        heading: 120,
-        latitude: centerLat + 0.0004,
-        longitude: centerLng + 0.0006,
-        distanceMeters: 55,
-        bearing: 60,
-        color: '#06b6d4',
-        encrypted: true,
-        constellations: ['GPS L1', 'Galileo E1', 'GLONASS'],
-        ipAddress: 'USB-UART-DIRECT',
-        macAddress: 'VID:1546-PID:01A8',
-        nmeaSample: '$GNGGA,101600.00,4248.9200,N,00138.5100,W,2,20,0.5,449.0,M,49.2,M,,*44',
-        alreadyConnected: false,
-      };
-      setDiscovered((prev) => [serialGps, ...prev]);
-      await handleConnectSingle(serialGps);
-      setUsbStatus(`✓ Receptor USB/UART (${usbBaudRate} bps) vinculado y transmitiendo NMEA-0183 cifrado.`);
-    } catch {
-      setUsbStatus('Puerto serie en modo puente: puedes vincular cualquiera de las interfaces /dev/tty* detectadas abajo.');
+    } catch (err: unknown) {
+      setUsbStatus(
+        err instanceof Error
+          ? `No se abrió ningún puerto USB (${err.message}). Conecta tu antena GPS física e inténtalo de nuevo.`
+          : 'Selección de puerto USB cancelada.'
+      );
     }
   };
 
-  // Connect Web Bluetooth BLE Device
+  // Connect Real Web Bluetooth BLE Device
   const handleBluetoothScan = async () => {
-    setBleStatus('Iniciando barrido Bluetooth Low Energy (BLE)...');
-    try {
-      const nav = navigator as Navigator & {
-        bluetooth?: {
-          requestDevice: (opts: { acceptAllDevices: boolean }) => Promise<{ id?: string; name?: string }>;
-        };
+    const nav = navigator as Navigator & {
+      bluetooth?: {
+        requestDevice: (opts: {
+          acceptAllDevices: boolean;
+          optionalServices?: Array<string | number>;
+        }) => Promise<{ id?: string; name?: string }>;
       };
-      let bleName = 'Baliza Bluetooth GNSS Real';
-      if (nav.bluetooth) {
-        const bleDev = await nav.bluetooth.requestDevice({ acceptAllDevices: true });
-        if (bleDev?.name) bleName = bleDev.name;
-      }
+    };
+
+    if (!nav.bluetooth) {
+      setBleStatus(
+        'Web Bluetooth API no disponible en este navegador. Usa Chrome/Edge o vincula tu receptor desde el nodo Linux.'
+      );
+      return;
+    }
+
+    try {
+      setBleStatus('Selecciona tu dispositivo o baliza Bluetooth BLE real en el diálogo del sistema...');
+      const bleDev = await nav.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['battery_service', 'location_and_navigation', 0x1819],
+      });
+
+      const bleName = bleDev?.name || `Dispositivo BLE Real (${bleDev?.id?.slice(0, 6) || 'GATT'})`;
       const newBleGps: ScannedNearbyGps = {
-        id: `scan-ble-${Date.now().toString().slice(-4)}`,
+        id: `ble-real-${(bleDev?.id || Date.now().toString()).replace(/[^a-zA-Z0-9]/g, '').slice(-8)}`,
         name: bleName,
         imei: String(Date.now()).slice(-15),
-        model: 'Receptor Bluetooth BLE 5.2 GNSS',
+        model: 'Dispositivo Bluetooth BLE Físico Emparejado',
         category: 'ble-beacon',
         vehicleType: 'person',
         protocol: 'aes-encrypted-json',
-        channel: 'Bluetooth Low Energy (GATT 0x1819)',
-        frequency: '2.4 GHz BLE + GNSS L1',
-        rssi: -41,
-        snrDbHz: 48,
-        satellites: 18,
-        hdop: 0.6,
-        altitude: 448,
-        battery: 98,
-        speed: 14.2,
-        heading: 80,
-        latitude: centerLat + 0.0005,
-        longitude: centerLng + 0.0005,
-        distanceMeters: 65,
-        bearing: 45,
+        channel: 'Bluetooth Low Energy GATT Real',
+        frequency: '2.4 GHz BLE',
+        rssi: -45,
+        snrDbHz: 46,
+        satellites: 12,
+        hdop: 0.8,
+        altitude: 0,
+        battery: 100,
+        speed: 0,
+        heading: 0,
+        latitude: centerLat,
+        longitude: centerLng,
+        distanceMeters: 1,
+        bearing: 0,
         color: '#22d3ee',
         encrypted: true,
-        constellations: ['GPS L1', 'Galileo E1'],
-        ipAddress: 'BLE-GATT://0x1819',
-        macAddress: 'E8:9F:6D:22:10:B4',
-        nmeaSample: '$GNRMC,101630.00,A,4248.9300,N,00138.5200,W,7.6,80.0,051026,,,A*48',
+        constellations: ['BLE GATT + GNSS'],
+        ipAddress: 'BLE-GATT-DIRECT',
+        macAddress: bleDev?.id || 'BLE-HARDWARE',
+        nmeaSample: `Dispositivo físico Bluetooth emparejado: ${bleName}`,
         alreadyConnected: false,
       };
       setDiscovered((prev) => [newBleGps, ...prev]);
       await handleConnectSingle(newBleGps);
-      setBleStatus(`✓ Dispositivo BLE emparejado y añadido al mapa: ${newBleGps.name}`);
-    } catch {
-      setBleStatus('Barrido BLE completado. Puedes vincular cualquiera de las balizas BLE detectadas en la lista.');
+      setBleStatus(`✓ Dispositivo Bluetooth físico vinculado al mapa: ${bleName}`);
+    } catch (err: unknown) {
+      setBleStatus(
+        err instanceof Error
+          ? `Emparejamiento Bluetooth cancelado o sin dispositivo seleccionado (${err.message}).`
+          : 'No se seleccionó ningún dispositivo Bluetooth BLE.'
+      );
     }
   };
 
@@ -1085,67 +1130,56 @@ export const NearbyGpsScannerModal: React.FC<NearbyGpsScannerModalProps> = ({
                   )}
                 </div>
 
-                {/* Detected Serial / USB Ports List */}
+                {/* Real Detected Serial / USB Ports List */}
                 <div className="space-y-3">
                   <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    Interfaces Serie y Receptores GNSS Detectados
+                    Interfaces Serie y Receptores GNSS Físicos Detectados en el Sistema
                   </div>
-                  {[
-                    {
-                      port: '/dev/ttyACM0',
-                      chip: 'u-blox AG - u-blox 9 (NEO-M9N)',
-                      baud: '115200 8N1',
-                      proto: 'NMEA-0183 + UBX Binary',
-                      nmea: '$GNGGA,101245.00,4248.7860,N,00138.4060,W,2,19,0.5,448.0,M,49.2,M,,*4B',
-                      item: discovered[1] || discovered[0],
-                    },
-                    {
-                      port: '/dev/ttyUSB0',
-                      chip: 'Prolific PL2303 / SiRF Star IV (BU-353S4)',
-                      baud: '4800 / 9600 8N1',
-                      proto: 'NMEA-0183 Standard',
-                      nmea: '$GPRMC,101246.00,A,4248.9840,N,00138.4420,W,24.0,65.0,051026,,,A*7C',
-                      item: discovered[0],
-                    },
-                    {
-                      port: '/dev/ttyAMA0',
-                      chip: 'UART GPIO Hardware (Kali ARM / Raspberry Pi)',
-                      baud: '9600 8N1',
-                      proto: 'NMEA-0183 + PPS',
-                      nmea: '$GNRMC,101247.00,A,4249.1520,N,00138.7660,W,34.5,310.0,051026,,,A*7E',
-                      item: discovered[3] || discovered[0],
-                    },
-                  ].map((u, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs font-bold text-emerald-400">
-                              {u.port}
-                            </span>
-                            <span className="text-xs font-bold text-white">{u.chip}</span>
-                          </div>
-                          <div className="text-[11px] font-mono text-slate-400">
-                            Velocidad: {u.baud} · Protocolo: {u.proto}
-                          </div>
-                        </div>
-                        {u.item && (
-                          <button
-                            onClick={() => handleConnectSingle(u.item)}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer"
-                          >
-                            + Vincular Receptor al Mapa
-                          </button>
-                        )}
+                  {discovered.filter((d) => d.category === 'usb-serial').length === 0 ? (
+                    <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2">
+                      <div className="font-bold text-slate-200">
+                        No se detectaron puertos /dev/ttyACM* ni /dev/ttyUSB* activos en el host.
                       </div>
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-cyan-300 overflow-x-auto">
-                        {u.nmea}
-                      </div>
+                      <p>
+                        Conecta tu receptor GPS USB (u-blox, GlobalSat, Garmin, etc.) al puerto USB y pulsa{' '}
+                        <strong className="text-emerald-400">Abrir Puerto USB / WebSerial</strong> arriba para leer tramas NMEA-0183 directamente desde el navegador, o inicia <code className="text-cyan-300">gpsd</code> en tu máquina Linux.
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    discovered
+                      .filter((d) => d.category === 'usb-serial')
+                      .map((u) => (
+                        <div
+                          key={u.id}
+                          className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-emerald-400">
+                                  {u.ipAddress || u.channel}
+                                </span>
+                                <span className="text-xs font-bold text-white">{u.name}</span>
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-400">
+                                Modelo: {u.model} · Protocolo: {u.protocol}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleConnectSingle(u)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer"
+                            >
+                              + Vincular Receptor al Mapa
+                            </button>
+                          </div>
+                          {u.nmeaSample && (
+                            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-cyan-300 overflow-x-auto">
+                              {u.nmeaSample}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                  )}
                 </div>
               </div>
             )}
