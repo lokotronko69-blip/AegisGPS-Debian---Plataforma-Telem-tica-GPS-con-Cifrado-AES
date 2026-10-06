@@ -609,6 +609,7 @@ export default function App() {
               realGpsActive={realGpsActive}
               onToggleRealGps={handleToggleRealGps}
               onOpenScanner={() => setIsScannerOpen(true)}
+              onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
               packetsDecrypted={stats?.packetsDecrypted || 0}
             />
           </div>
@@ -733,15 +734,40 @@ export default function App() {
         onCreateGeofence={handleAddGeofence}
       />
 
-      {/* Universal Device Connector Hub Modal */}
+      {/* Universal Device Connector Hub Modal (Plug & Play Proximity Scanner) */}
       <DeviceConnectorHubModal
         isOpen={isConnectorHubOpen}
         onClose={() => setIsConnectorHubOpen(false)}
         devices={devices}
+        centerLat={
+          realLocationCoords?.lat ||
+          selectedDevice?.lastPosition?.latitude ||
+          devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition?.latitude ||
+          42.8150
+        }
+        centerLng={
+          realLocationCoords?.lng ||
+          selectedDevice?.lastPosition?.longitude ||
+          devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition?.longitude ||
+          -1.6425
+        }
+        realGpsActive={realGpsActive}
+        onToggleRealGps={handleToggleRealGps}
+        onDeviceConnected={(connectedDevs, focusDev) => {
+          setDevices((prev) => {
+            const map = new Map<string, GpsDevice>(prev.map((d) => [d.id, d]));
+            connectedDevs.forEach((cd) => map.set(cd.id, cd));
+            return Array.from(map.values());
+          });
+          if (focusDev) {
+            setSelectedDevice(focusDev);
+          }
+        }}
         onSelectDeviceForMap={(dev) => {
           setSelectedDevice(dev);
           setIsConnectorHubOpen(false);
         }}
+        onOpenFullScanner={() => setIsScannerOpen(true)}
       />
 
       <NotificationDrawer

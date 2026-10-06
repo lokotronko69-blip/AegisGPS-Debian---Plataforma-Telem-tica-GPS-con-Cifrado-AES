@@ -31,6 +31,7 @@ interface DeviceSidebarProps {
   realGpsActive?: boolean;
   onToggleRealGps?: () => void;
   onOpenScanner?: () => void;
+  onOpenConnectorHub?: () => void;
   packetsDecrypted?: number;
 }
 
@@ -45,6 +46,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
   realGpsActive,
   onToggleRealGps,
   onOpenScanner,
+  onOpenConnectorHub,
   packetsDecrypted = 0,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -223,17 +225,32 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
           </button>
         )}
 
+        {onOpenConnectorHub && (
+          <button
+            onClick={onOpenConnectorHub}
+            className="w-full py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-between transition-all shadow-md cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 stroke-[2.5]" />
+              <span>⚡ Conectar GPS Plug & Play (1-Clic)</span>
+            </div>
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-950 text-emerald-400">
+              AUTO
+            </span>
+          </button>
+        )}
+
         {onOpenScanner && (
           <button
             onClick={onOpenScanner}
-            className="w-full py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between transition-all shadow-sm"
+            className="w-full py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between transition-all shadow-sm cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <Radar className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '4s' }} />
-              <span>Escanear GPS Cercanos (Radar RF / BLE)</span>
+              <span>Escanear GPS Cercanos (Radar 360°)</span>
             </div>
             <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-              ESCANEAR
+              RADAR
             </span>
           </button>
         )}

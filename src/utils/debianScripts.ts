@@ -3,7 +3,7 @@
 
 export const DEFAULT_DEBIAN_DEVICE_ID = 'dev-debian-patrol-04';
 export const DEFAULT_DEBIAN_AES_KEY = 'a4f107bb4c3a27f6e0c98f8216d4e2a901fbc34d88e051e941a329d8924b17aa';
-export const AEGIS_APP_VERSION = '2.5.0';
+export const AEGIS_APP_VERSION = '2.6.0';
 
 export function generateDebianSystemdService(): string {
   return `[Unit]
@@ -479,7 +479,7 @@ LOCAL_DASHBOARD_HTML = r"""<!DOCTYPE html>
         <div class="flex items-center gap-2 font-display text-base font-bold text-white cursor-pointer" onclick="openModal('none')">
           <div class="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">🛡️</div>
           <span>AegisGPS Kali / Debian</span>
-          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v2.5.0</span>
+          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v2.6.0</span>
         </div>
         <div class="hidden xl:flex items-center gap-2 text-xs text-slate-400 pl-3 border-l border-slate-800 font-mono">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -499,13 +499,13 @@ LOCAL_DASHBOARD_HTML = r"""<!DOCTYPE html>
           <span id="hdr-alert-badge" class="hidden absolute -top-1 -right-1 px-1.5 bg-rose-600 text-white font-mono text-[10px] font-bold rounded-full">0</span>
         </button>
         <button onclick="triggerLocalSelfUpdate()" id="btn-ota-update" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 border border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors" title="Actualizar aplicación y nodo local a la última versión">
-          ⬆️ Actualizar v2.5.0
+          ⬆️ Actualizar v2.6.0
         </button>
         <button onclick="openModal('scanner')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30 transition-colors">
           📡 Escanear GPS Cercanos
         </button>
         <button onclick="openModal('connect')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md">
-          📲 Conectar Dispositivos
+          ⚡ Conectar GPS Plug & Play
         </button>
         <button onclick="openModal('newdevice')" class="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-sm">
           + Nuevo GPS
@@ -570,10 +570,14 @@ LOCAL_DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Buscador y Botón Escanear GPS Cercanos -->
+    <!-- Buscador y Botones Plug & Play + Escanear GPS Cercanos -->
     <div class="p-2.5 border-b border-slate-800 space-y-2">
+      <button onclick="openModal('connect')" class="w-full py-1.5 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-between shadow">
+        <span>⚡ Conectar GPS Plug & Play (1-Clic)</span>
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-950 text-emerald-400">AUTO</span>
+      </button>
       <button onclick="openModal('scanner')" class="w-full py-1.5 px-3 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between">
-        <span>📡 Escanear GPS Cercanos (Radar RF)</span>
+        <span>📡 Escanear GPS Cercanos (Radar 360°)</span>
         <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950">RADAR</span>
       </button>
       <input id="search-input" oninput="renderSidebar()" type="text" placeholder="Buscar unidad, host o IMEI..." class="w-full px-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500" />
@@ -857,23 +861,91 @@ LOCAL_DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- MODAL 6: CONECTAR DISPOSITIVOS Y COMANDOS CLI -->
-    <div id="modal-connect" class="hidden w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <!-- MODAL 6: CONECTOR UNIVERSAL GPS PLUG & PLAY (PROXIMIDAD 1-CLIC) -->
+    <div id="modal-connect" class="hidden w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-        <h2 class="font-display text-base font-bold text-white">📲 Conectar Dispositivos & Comandos Kali Linux</h2>
+        <div>
+          <h2 class="font-display text-base font-bold text-white">⚡ Conector Universal GPS Plug & Play · Escáner de Proximidad</h2>
+          <p class="text-xs text-slate-400">Conecta cualquier tipo de GPS en 1 clic sin configuración manual (Autodetección de protocolo y clave AES-256-GCM)</p>
+        </div>
         <button onclick="openModal('none')" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">✕</button>
       </div>
-      <div class="p-6 space-y-4 overflow-y-auto max-h-[75vh] text-xs">
+      <div class="p-6 space-y-4 overflow-y-auto max-h-[78vh] text-xs">
+        <div class="p-4 rounded-xl bg-emerald-950/50 border border-emerald-500/40 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="font-bold text-emerald-300 text-sm">⚡ Emparejamiento Masivo por Proximidad (Todo Plug & Play)</div>
+            <div class="text-slate-300 mt-0.5">Autodetecta y vincula todos los receptores GPS cercanos (USB, BLE, OBD-II, Teltonika, Móviles y LoRa) en 1 clic.</div>
+          </div>
+          <button onclick="connectAllNearbyGps()" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg">
+            ⚡ Conectar Todos los GPS Cercanos (1-Clic)
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">📱 Smartphone Android / iOS</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">OsmAnd / Traccar / WebGPS en proximidad Wi-Fi/5G.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('mobile','Smartphone Móvil Plug&Play','#38bdf8')" class="w-full py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">🚗 Vehicular OBD-II / GT06</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">SinoTrack, Concox, Coban TK103 y Freematics CAN.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('obd','Localizador Coche OBD-II','#10b981')" class="w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">🚛 Teltonika FMB / FMC</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">Autodetección Codec 8 Extended en puerto TCP :5023.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('teltonika','Teltonika FMB140 Táctico','#f59e0b')" class="w-full py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">🔌 GPS USB / Serie (/dev/ttyACM0)</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">u-blox NEO-M9N / GlobalSat NMEA-0183 Auto-Baud.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('usb','Antena USB u-blox (/dev/ttyACM0)','#06b6d4')" class="w-full py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">🔵 Bluetooth BLE 5.2</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">Garmin GLO 2, SmartTags UWB y balizas BLE cercanas.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('ble','Receptor Bluetooth BLE Garmin','#22d3ee')" class="w-full py-2 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">🛸 Dron MAVLink GNSS</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">Pixhawk / Holybro M9N RF 915MHz Telemetry.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('drone','Dron Táctico MAVLink','#a855f7')" class="w-full py-2 rounded-lg bg-purple-400 hover:bg-purple-300 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">📡 Baliza LoRaWAN 868MHz</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">LILYGO T-Beam Meshtastic SF7 + GPS NEO-8M.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('lora','Baliza LoRaWAN Meshtastic','#ec4899')" class="w-full py-2 rounded-lg bg-pink-400 hover:bg-pink-300 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between gap-2.5">
+            <div>
+              <div class="font-bold text-white">🛠️ Microcontrolador ESP32</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">ESP32-S3 Wi-Fi/BLE + Antena GPS UART.</div>
+            </div>
+            <button onclick="plugPlayQuickConnect('esp32','Nodo IoT ESP32-S3 GPS','#a3e635')" class="w-full py-2 rounded-lg bg-lime-400 hover:bg-lime-300 text-slate-950 font-bold">⚡ Conectar en 1 Clic</button>
+          </div>
+        </div>
+
         <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-          <div class="font-bold text-emerald-400">1. Comandos Rápidos en tu Terminal Kali Linux (koko@koko):</div>
+          <div class="font-bold text-emerald-400">Comandos Rápidos en tu Terminal Kali Linux (koko@koko):</div>
           <pre class="p-3 bg-slate-900 rounded-lg font-mono text-cyan-300 overflow-x-auto">aegis-gps status     # Ver estado del servicio y trama AES-256
-aegis-gps logs       # Ver coordenadas en vivo en consola
+aegis-gps update     # Actualizar nodo local a la última versión disponible
 aegis-gps web        # Abrir esta plataforma completa en http://127.0.0.1:8765
 aegis-gps restart    # Reiniciar el daemon systemd</pre>
-        </div>
-        <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-          <div class="font-bold text-cyan-400">2. Inyectar coordenadas desde otra terminal en tu Kali Linux (cURL):</div>
-          <pre class="p-3 bg-slate-900 rounded-lg font-mono text-slate-200 overflow-x-auto">curl -X POST http://127.0.0.1:8765/api/inject -H "Content-Type: application/json" -d '{"deviceId":"kali-tactical-01","latitude":42.8165,"longitude":-1.6440,"speed":65}'</pre>
         </div>
       </div>
     </div>
@@ -1237,6 +1309,21 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         wrap.appendChild(expBtn);
         box.appendChild(wrap);
       }
+    }
+
+    async function plugPlayQuickConnect(prefix, name, color) {
+      const c = map.getCenter();
+      const id = 'pnp-' + prefix + '-' + Math.floor(Math.random()*900+100);
+      const lat = c.lat + (Math.random() - 0.5) * 0.004;
+      const lon = c.lng + (Math.random() - 0.5) * 0.004;
+      await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name, color, latitude: lat, longitude: lon })
+      });
+      selectedDeviceId = id;
+      await fetchState();
+      openModal('none');
     }
 
     async function connectAllNearbyGps() {

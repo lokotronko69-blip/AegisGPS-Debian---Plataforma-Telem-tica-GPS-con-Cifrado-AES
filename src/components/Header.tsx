@@ -180,14 +180,14 @@ export const Header: React.FC<HeaderProps> = ({
             <span>📡 Escanear GPS Cercanos</span>
           </button>
 
-          {/* Connect Real Devices Wizard CTA */}
+          {/* Connect Real Devices Plug & Play Wizard CTA */}
           <button
             onClick={onOpenConnectorHub}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md cursor-pointer"
-            title="Conectar smartphones, localizadores de coche, Teltonika o Kali/Debian"
+            title="Conectar cualquier GPS en 1 clic con escáner de proximidad Plug & Play"
           >
             <Radio className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Conectar Dispositivos</span>
+            <span>⚡ Conectar GPS Plug & Play</span>
           </button>
 
           {/* New Device CTA */}
