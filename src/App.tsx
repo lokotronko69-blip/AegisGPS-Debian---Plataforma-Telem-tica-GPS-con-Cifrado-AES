@@ -23,7 +23,7 @@ import {
 } from './types/gps';
 import { playAlertSound } from './utils/audio';
 import { encryptAes256Gcm, generateAes256KeyHex } from './utils/crypto';
-import { AEGIS_APP_VERSION } from './utils/debianScripts';
+import { AEGIS_APP_VERSION, generateDebianPythonScript } from './utils/debianScripts';
 
 export default function App() {
   const [devices, setDevices] = useState<GpsDevice[]>([]);
@@ -262,6 +262,20 @@ export default function App() {
         const pkt = await res.json();
         if (pkt && pkt.version !== AEGIS_APP_VERSION) {
           setLocalUpdateAvailable(true);
+          // Attempt automatic OTA upgrade of local Kali node if it supports /api/self-update
+          try {
+            const latestPy = generateDebianPythonScript(window.location.origin);
+            const upRes = await fetch('http://127.0.0.1:8765/api/self-update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pythonCode: latestPy }),
+            });
+            if (upRes.ok) {
+              setLocalUpdateAvailable(false);
+            }
+          } catch {
+            // Local node is v1.0; user can click Actualizar button
+          }
         } else {
           setLocalUpdateAvailable(false);
         }
@@ -535,27 +549,9 @@ export default function App() {
   const unreadAlertsCount = alerts.filter((a) => !a.read).length;
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden select-none bg-slate-950 text-slate-100">
-      
-      {/* 1. Real-World Map as Full-Bleed Background */}
-      <div className="absolute inset-0 z-0">
-        <MapView
-          devices={devices}
-          geofences={geofences}
-          selectedDevice={selectedDevice}
-          onSelectDevice={setSelectedDevice}
-          onOpenHistory={handleOpenHistory}
-          onOpenCrypto={() => setCurrentTab('crypto')}
-          positionsHistory={positionsHistory}
-          onToggleRealGps={handleToggleRealGps}
-          realGpsActive={realGpsActive}
-          realLocationCoords={realLocationCoords}
-          onOpenScanner={() => setIsScannerOpen(true)}
-        />
-      </div>
-
-      {/* 2. Floating Top Bar Header */}
-      <div className="relative z-30 pointer-events-auto">
+    <div className="flex flex-col h-screen w-screen overflow-hidden select-none bg-slate-950 text-slate-100">
+      {/* 1. Unified Top Command Header */}
+      <div className="relative z-30 shrink-0 pointer-events-auto">
         <Header
           currentTab={currentTab}
           onSelectTab={setCurrentTab}
@@ -569,57 +565,80 @@ export default function App() {
           onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenUpdater={() => setIsUpdaterOpen(true)}
+          onOpenHistory={() => {
+            const target = selectedDevice || devices[0];
+            if (target) handleOpenHistory(target);
+          }}
+          geofencesCount={geofences.length}
           updateAvailable={localUpdateAvailable}
           connectedSse={connectedSse}
         />
       </div>
 
-      {/* 3. Main Floating Controls Layer (Passes click-throughs to the real map) */}
-      <div className="absolute inset-0 top-14 z-20 pointer-events-none flex">
-        
-        {/* Floating Collapsible Device Fleet Sidebar */}
-        <div className="pointer-events-none h-full">
-          <DeviceSidebar
+      {/* 2. Main Interactive Workspace Area (Map + Sidebar + Floating HUDs) */}
+      <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+        {/* Real-World Map as Full-Bleed Background */}
+        <div className="absolute inset-0 z-0">
+          <MapView
             devices={devices}
-            selectedDeviceId={selectedDevice?.id || null}
+            geofences={geofences}
+            selectedDevice={selectedDevice}
             onSelectDevice={setSelectedDevice}
             onOpenHistory={handleOpenHistory}
             onOpenCrypto={() => setCurrentTab('crypto')}
-            isCollapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-            realGpsActive={realGpsActive}
+            positionsHistory={positionsHistory}
             onToggleRealGps={handleToggleRealGps}
+            realGpsActive={realGpsActive}
+            realLocationCoords={realLocationCoords}
             onOpenScanner={() => setIsScannerOpen(true)}
           />
         </div>
 
-        {/* Center / Right Click-through area over map */}
-        <div className="flex-1 pointer-events-none relative">
-          
-          {/* Floating Instant Alert Toast (Top Right) */}
-          {latestToast && (
-            <div className="pointer-events-auto absolute top-4 right-4 z-40 max-w-sm p-3.5 bg-slate-900/95 backdrop-blur-md border border-rose-900/60 rounded-2xl shadow-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping mt-1 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between text-xs font-bold text-white">
-                  <span>{latestToast.deviceName}</span>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {new Date(latestToast.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <p className="text-xs text-rose-300 mt-0.5 leading-snug">
-                  {latestToast.message}
-                </p>
-              </div>
-              <button
-                onClick={() => setLatestToast(null)}
-                className="text-slate-400 hover:text-white"
-              >
-                ×
-              </button>
-            </div>
-          )}
+        {/* Floating Controls Layer (Passes click-throughs to the real map) */}
+        <div className="absolute inset-0 z-20 pointer-events-none flex">
+          {/* Floating Collapsible Device Fleet Sidebar */}
+          <div className="pointer-events-none h-full">
+            <DeviceSidebar
+              devices={devices}
+              selectedDeviceId={selectedDevice?.id || null}
+              onSelectDevice={setSelectedDevice}
+              onOpenHistory={handleOpenHistory}
+              onOpenCrypto={() => setCurrentTab('crypto')}
+              isCollapsed={sidebarCollapsed}
+              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+              realGpsActive={realGpsActive}
+              onToggleRealGps={handleToggleRealGps}
+              onOpenScanner={() => setIsScannerOpen(true)}
+              packetsDecrypted={stats?.packetsDecrypted || 0}
+            />
+          </div>
 
+          {/* Center / Right Click-through area over map */}
+          <div className="flex-1 pointer-events-none relative">
+            {/* Floating Instant Alert Toast (Top Right) */}
+            {latestToast && (
+              <div className="pointer-events-auto absolute top-14 right-4 z-40 max-w-sm p-3.5 bg-slate-900/95 backdrop-blur-md border border-rose-900/60 rounded-2xl shadow-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
+                <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping mt-1 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between text-xs font-bold text-white">
+                    <span>{latestToast.deviceName}</span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {new Date(latestToast.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-rose-300 mt-0.5 leading-snug">
+                    {latestToast.message}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setLatestToast(null)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

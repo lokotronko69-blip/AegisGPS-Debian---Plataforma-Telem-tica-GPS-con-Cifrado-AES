@@ -31,6 +31,7 @@ interface DeviceSidebarProps {
   realGpsActive?: boolean;
   onToggleRealGps?: () => void;
   onOpenScanner?: () => void;
+  packetsDecrypted?: number;
 }
 
 export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
@@ -44,6 +45,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
   realGpsActive,
   onToggleRealGps,
   onOpenScanner,
+  packetsDecrypted = 0,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'moving' | 'idle' | 'stopped'>('all');
@@ -152,21 +154,51 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
       <div className="p-3 border-b border-slate-800/80 flex items-center justify-between">
         <div>
           <h3 className="font-display text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-            <span>Dispositivos en Tiempo Real</span>
+            <span>Unidades GPS Activas</span>
             <span className="text-[10px] font-mono text-cyan-400 font-normal">({devices.length})</span>
           </h3>
           <p className="text-[11px] text-slate-400">
-            Monitoreo satelital activo sobre mapa real
+            Telemetría en tiempo real AES-256-GCM
           </p>
         </div>
 
-        <button
-          onClick={onToggleCollapse}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          title="Colapsar panel para ver mapa completo"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              const kaliDev = devices.find((d) => d.id === 'dev-debian-patrol-04') || devices[0];
+              if (kaliDev) onSelectDevice(kaliDev);
+            }}
+            className="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-500/25 cursor-pointer"
+            title="Centrar en tu nodo Kali / Debian"
+          >
+            📍 Mi Kali
+          </button>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Colapsar panel para ver mapa completo"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Unified 3-Column KPI Strip (Identical to Local :8765 Interface) */}
+      <div className="grid grid-cols-3 gap-1.5 p-2.5 bg-slate-950/60 border-b border-slate-800 text-center">
+        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
+          <div className="text-[10px] text-slate-400">UNIDADES</div>
+          <div className="font-mono text-sm font-bold text-white">{devices.length}</div>
+        </div>
+        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
+          <div className="text-[10px] text-slate-400">TRAMAS AES</div>
+          <div className="font-mono text-sm font-bold text-cyan-400">{packetsDecrypted}</div>
+        </div>
+        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
+          <div className="text-[10px] text-slate-400">BATERÍA KALI</div>
+          <div className="font-mono text-sm font-bold text-emerald-400">
+            {devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition?.battery ?? 95}%
+          </div>
+        </div>
       </div>
 
       {/* Real Device Hardware GNSS Connect + Scan Nearby GPS Buttons */}
@@ -336,6 +368,19 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1">
+                    {onOpenScanner && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectDevice(dev);
+                          onOpenScanner();
+                        }}
+                        className="p-1 rounded hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 transition-colors"
+                        title="Escanear dispositivos GPS cercanos alrededor de esta unidad"
+                      >
+                        <Radar className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

@@ -481,164 +481,166 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* The Leaflet Real Map DOM Container (Edge-to-Edge Full Bleed) */}
       <div ref={mapContainerRef} className="h-full w-full z-0" />
 
-      {/* Floating Map Controls Toolbar (Top Right below header) */}
-      <div className="absolute top-4 right-16 z-20 flex flex-col gap-2">
-        {/* Fit Fleet Bounds */}
-        <button
-          onClick={handleFitFleet}
-          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md transition-all hover:scale-105"
-          title="Centrar mapa en toda la flota de vehículos"
-        >
-          <Maximize2 className="w-4 h-4 text-cyan-400" />
-        </button>
+      {/* Top Floating Map Layer & Tactical Quick-Bar (Identical to Local :8765 Interface) */}
+      <div className="absolute top-3 right-14 z-20 flex flex-wrap items-center gap-2">
+        <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-xl p-1 flex items-center gap-1 shadow-xl">
+          <button
+            onClick={() => setCurrentLayer('osm')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              currentLayer === 'osm'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            🗺️ Callejero Real
+          </button>
+          <button
+            onClick={() => setCurrentLayer('satellite')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              currentLayer === 'satellite'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            🛰️ Satélite
+          </button>
+          <button
+            onClick={() => setCurrentLayer('dark')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              currentLayer === 'dark'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            🌑 Táctico
+          </button>
+          <button
+            onClick={() => setCurrentLayer('voyager')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              currentLayer === 'voyager'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            ⛰️ Topo
+          </button>
+        </div>
 
-        {/* Follow Mode Toggle */}
         <button
           onClick={() => setFollowMode(!followMode)}
-          className={`p-2.5 border rounded-xl shadow-2xl backdrop-blur-md transition-all hover:scale-105 ${
+          className={`px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-lg backdrop-blur-md transition-colors cursor-pointer ${
             followMode
-              ? 'bg-cyan-950/90 border-cyan-500 text-cyan-300'
-              : 'bg-slate-900/90 border-slate-700/80 text-slate-400 hover:text-slate-200'
+              ? 'bg-slate-900/95 border-cyan-500/50 text-cyan-300'
+              : 'bg-slate-900/95 border-slate-700 text-slate-400 hover:text-white'
           }`}
-          title={followMode ? 'Seguimiento automático: ACTIVADO' : 'Seguimiento automático: DESACTIVADO'}
         >
-          <Crosshair className="w-4 h-4" />
+          🎯 Seguir Unidad: {followMode ? 'ON' : 'OFF'}
         </button>
 
-        {/* Real GPS Geolocation Toggle */}
-        {onToggleRealGps && (
-          <button
-            onClick={onToggleRealGps}
-            className={`p-2.5 border rounded-xl shadow-2xl backdrop-blur-md transition-all hover:scale-105 ${
-              realGpsActive
-                ? 'bg-emerald-950/90 border-emerald-500 text-emerald-400 animate-pulse'
-                : 'bg-slate-900/90 border-slate-700/80 text-slate-400 hover:text-emerald-400'
-            }`}
-            title={realGpsActive ? 'Desactivar mi GPS real' : 'Conectar y centrar en mi GPS real'}
-          >
-            <MapPin className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Scan Nearby GPS Radar Button */}
         {onOpenScanner && (
           <button
             onClick={onOpenScanner}
-            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border border-emerald-500/50 rounded-xl shadow-2xl backdrop-blur-md transition-all hover:scale-105"
-            title="Abrir Escáner de Dispositivos GPS Cercanos (6 Apartados)"
+            className="px-3 py-1.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-emerald-500/50 text-emerald-300 text-xs font-bold shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Radar className="w-4 h-4 animate-spin" style={{ animationDuration: '5s' }} />
+            <Radar className="w-3.5 h-3.5 text-emerald-400 animate-spin" style={{ animationDuration: '4s' }} />
+            <span>📡 Escanear Cercanos</span>
           </button>
         )}
 
-        {/* Layer Switcher Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setLayerDropdownOpen(!layerDropdownOpen)}
-            className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md transition-all hover:scale-105"
-            title="Cambiar tipo de mapa real (Satélite, OpenStreetMap, Oscuro)"
-          >
-            <Layers className="w-4 h-4 text-amber-400" />
-          </button>
-
-          {layerDropdownOpen && (
-            <div className="absolute right-full top-0 mr-2 p-1.5 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md w-44 space-y-1 animate-in fade-in zoom-in-95">
-              <button
-                onClick={() => { setCurrentLayer('osm'); setLayerDropdownOpen(false); }}
-                className={`w-full px-2.5 py-1.5 text-xs text-left rounded-lg transition-colors flex items-center gap-2 ${
-                  currentLayer === 'osm' ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                <span>OpenStreetMap Real</span>
-              </button>
-
-              <button
-                onClick={() => { setCurrentLayer('satellite'); setLayerDropdownOpen(false); }}
-                className={`w-full px-2.5 py-1.5 text-xs text-left rounded-lg transition-colors flex items-center gap-2 ${
-                  currentLayer === 'satellite' ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Satellite className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Satélite Real ESRI</span>
-              </button>
-
-              <button
-                onClick={() => { setCurrentLayer('dark'); setLayerDropdownOpen(false); }}
-                className={`w-full px-2.5 py-1.5 text-xs text-left rounded-lg transition-colors flex items-center gap-2 ${
-                  currentLayer === 'dark' ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Moon className="w-3.5 h-3.5 text-purple-400" />
-                <span>Modo Oscuro Táctico</span>
-              </button>
-
-              <button
-                onClick={() => { setCurrentLayer('voyager'); setLayerDropdownOpen(false); }}
-                className={`w-full px-2.5 py-1.5 text-xs text-left rounded-lg transition-colors flex items-center gap-2 ${
-                  currentLayer === 'voyager' ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span>Voyager Navegación</span>
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={handleFitFleet}
+          className="p-2 bg-slate-900/95 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-lg backdrop-blur-md cursor-pointer"
+          title="Ver toda la flota en el mapa"
+        >
+          <Maximize2 className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Selected Vehicle Quick Telemetry Bar (Bottom Floating HUD) */}
+      {/* Selected Vehicle Full Telemetry Bar (Bottom Floating HUD - Identical to Local :8765) */}
       {selectedDevice && selectedDevice.lastPosition && (
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-xl bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 shadow-2xl flex items-center justify-between gap-4">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-4xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div 
-              className="w-10 h-10 rounded-xl bg-slate-950 flex items-center justify-center border shadow"
-              style={{ borderColor: selectedDevice.color }}
-            >
-              <Radio className="w-5 h-5 text-cyan-400" />
-            </div>
+            <div
+              className="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-500/50"
+              style={{ backgroundColor: selectedDevice.color }}
+            />
             <div>
-              <div className="text-xs font-bold text-white flex items-center gap-2">
+              <div className="font-display text-sm font-bold text-white flex items-center gap-2">
                 <span>{selectedDevice.name}</span>
-                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-800">
-                  AES-256
+                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-700/60">
+                  AES-256-GCM
                 </span>
               </div>
-              <div className="text-[11px] text-slate-300 font-mono mt-0.5">
-                {formatCoordinates(selectedDevice.lastPosition.latitude, selectedDevice.lastPosition.longitude)}
+              <div className="font-mono text-[11px] text-cyan-400">
+                Lat: {selectedDevice.lastPosition.latitude.toFixed(6)} · Lon: {selectedDevice.lastPosition.longitude.toFixed(6)}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-right">
-            <div>
-              <span className="text-[10px] text-slate-400 block">Velocidad</span>
-              <span className="font-mono text-base font-bold tabular-nums text-cyan-400">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 text-center flex-1 max-w-2xl">
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">VELOCIDAD</div>
+              <div className="font-mono text-xs font-bold text-cyan-400">
                 {Math.round(selectedDevice.lastPosition.speed)} km/h
-              </span>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] text-slate-400 block">Batería</span>
-              <span className="font-mono text-xs font-semibold tabular-nums text-emerald-400">
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">RUMBO</div>
+              <div className="font-mono text-xs font-bold text-slate-200">
+                {selectedDevice.lastPosition.heading}°
+              </div>
+            </div>
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">ALTITUD</div>
+              <div className="font-mono text-xs font-bold text-slate-200">
+                {Math.round(selectedDevice.lastPosition.altitude || 450)} m
+              </div>
+            </div>
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">SATÉLITES</div>
+              <div className="font-mono text-xs font-bold text-emerald-400">
+                {selectedDevice.lastPosition.satellites || 16} GNSS
+              </div>
+            </div>
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">BATERÍA</div>
+              <div className="font-mono text-xs font-bold text-emerald-400">
                 {selectedDevice.lastPosition.battery}%
-              </span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => onOpenHistory(selectedDevice)}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors shadow"
-                title="Historial de ruta"
-              >
-                <History className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onOpenCrypto(selectedDevice)}
-                className="p-2 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-700 text-cyan-300 transition-colors shadow"
-                title="Inspeccionar paquetes AES"
-              >
-                <ShieldCheck className="w-4 h-4" />
-              </button>
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">ESTADO</div>
+              <div className="font-mono text-[10px] font-bold text-emerald-300">
+                VERIFICADO
+              </div>
             </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {onOpenScanner && (
+              <button
+                onClick={onOpenScanner}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center gap-1 transition-colors cursor-pointer"
+                title="Escanear GPS cercanos alrededor de esta unidad"
+              >
+                <Radar className="w-3.5 h-3.5" />
+                <span>Radar</span>
+              </button>
+            )}
+            <button
+              onClick={() => onOpenHistory(selectedDevice)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+              title="Historial de ruta"
+            >
+              ⏱️ Ruta
+            </button>
+            <button
+              onClick={() => onOpenCrypto(selectedDevice)}
+              className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-xs font-semibold text-cyan-300 transition-colors cursor-pointer"
+              title="Inspeccionar paquetes AES"
+            >
+              🔐 Ver AES
+            </button>
           </div>
         </div>
       )}

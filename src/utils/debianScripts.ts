@@ -3,7 +3,7 @@
 
 export const DEFAULT_DEBIAN_DEVICE_ID = 'dev-debian-patrol-04';
 export const DEFAULT_DEBIAN_AES_KEY = 'a4f107bb4c3a27f6e0c98f8216d4e2a901fbc34d88e051e941a329d8924b17aa';
-export const AEGIS_APP_VERSION = '2.4.0';
+export const AEGIS_APP_VERSION = '2.5.0';
 
 export function generateDebianSystemdService(): string {
   return `[Unit]
@@ -472,69 +472,78 @@ LOCAL_DASHBOARD_HTML = r"""<!DOCTYPE html>
   <!-- 1. MAPA INTERACTIVO REAL A PANTALLA COMPLETA -->
   <div id="map" class="absolute inset-0 z-0"></div>
 
-  <!-- 2. BARRA SUPERIOR DE NAVEGACIÓN (HEADER COMPLETO) -->
-  <header class="relative z-30 h-14 border-b border-slate-800 bg-slate-900/95 backdrop-blur px-4 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-2 font-display text-base font-bold text-white cursor-pointer" onclick="openModal('none')">
-        <div class="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">🛡️</div>
-        <span>AegisGPS Debian</span>
+  <!-- 2. BARRA SUPERIOR DE NAVEGACIÓN UNIFICADA (2 FILAS IDÉNTICA A LA APP PRINCIPAL) -->
+  <header class="relative z-30 border-b border-slate-800 bg-slate-900/95 backdrop-blur px-4 py-2 flex flex-col gap-2">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 font-display text-base font-bold text-white cursor-pointer" onclick="openModal('none')">
+          <div class="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">🛡️</div>
+          <span>AegisGPS Kali / Debian</span>
+          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v2.5.0</span>
+        </div>
+        <div class="hidden xl:flex items-center gap-2 text-xs text-slate-400 pl-3 border-l border-slate-800 font-mono">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="hdr-host" class="text-emerald-400 font-semibold">KALI LINUX :8765</span>
+          <span>·</span>
+          <span>ENLACE AES-256-GCM ACTIVO</span>
+        </div>
       </div>
-      <div class="hidden xl:flex items-center gap-2 text-xs text-slate-400 pl-3 border-l border-slate-800 font-mono">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span id="hdr-host" class="text-emerald-400 font-semibold">KALI LINUX :8765</span>
-        <span>·</span>
-        <span>AES-256-GCM ACTIVO</span>
+
+      <!-- Acciones Derecha -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <button onclick="toggleSimulation()" id="btn-sim" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 border border-slate-700 text-cyan-300 hover:bg-slate-700 transition-colors">
+          ⏸ Pausar Flota
+        </button>
+        <button onclick="openModal('alerts')" class="relative p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition-colors" title="Alertas de Seguridad">
+          🔔
+          <span id="hdr-alert-badge" class="hidden absolute -top-1 -right-1 px-1.5 bg-rose-600 text-white font-mono text-[10px] font-bold rounded-full">0</span>
+        </button>
+        <button onclick="triggerLocalSelfUpdate()" id="btn-ota-update" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 border border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors" title="Actualizar aplicación y nodo local a la última versión">
+          ⬆️ Actualizar v2.5.0
+        </button>
+        <button onclick="openModal('scanner')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30 transition-colors">
+          📡 Escanear GPS Cercanos
+        </button>
+        <button onclick="openModal('connect')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md">
+          📲 Conectar Dispositivos
+        </button>
+        <button onclick="openModal('newdevice')" class="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-sm">
+          + Nuevo GPS
+        </button>
       </div>
     </div>
 
-    <!-- Pestañas Principales -->
-    <nav class="hidden md:flex items-center gap-1.5">
-      <button onclick="openModal('none')" id="tab-map" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-cyan-400 border border-slate-700 transition-colors">
-        Mapa en Vivo
+    <!-- Fila 2: Pestañas Tácticas Unificadas -->
+    <nav class="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-slate-800/80">
+      <button onclick="openModal('none')" id="tab-map" class="px-3 py-1 text-xs font-semibold rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 whitespace-nowrap">
+        📍 Mapa en Vivo
       </button>
-      <button onclick="openModal('crypto')" id="tab-crypto" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors flex items-center gap-1.5">
-        <span>🔐 Cifrado AES (<span id="hdr-pkt-count">0</span>)</span>
+      <button onclick="openModal('scanner')" class="px-3 py-1 text-xs font-semibold rounded-lg text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/30 whitespace-nowrap">
+        📡 Radar GPS Cercanos (6 Apartados)
       </button>
-      <button onclick="openModal('geofences')" id="tab-geofences" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors">
+      <button onclick="openModal('crypto')" id="tab-crypto" class="px-3 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 whitespace-nowrap">
+        🔐 Cifrado AES (<span id="hdr-pkt-count">0</span>)
+      </button>
+      <button onclick="openModal('geofences')" id="tab-geofences" class="px-3 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 whitespace-nowrap">
         🚧 Geocercas (<span id="hdr-geo-count">0</span>)
       </button>
-      <button onclick="openModal('history')" id="tab-history" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors">
-        ⏱️ Historial Ruta
+      <button onclick="openModal('history')" id="tab-history" class="px-3 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 whitespace-nowrap">
+        ⏱️ Historial de Ruta
       </button>
-      <button onclick="openModal('injector')" id="tab-injector" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors">
-        📡 Inyector GPS
+      <button onclick="openModal('connect')" class="px-3 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 whitespace-nowrap">
+        🐧 Debian & MQTT Hub
       </button>
-      <button onclick="openModal('commands')" id="tab-commands" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors">
+      <button onclick="openModal('injector')" id="tab-injector" class="px-3 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 whitespace-nowrap">
+        📻 Inyector GPS & Pruebas
+      </button>
+      <button onclick="openModal('commands')" id="tab-commands" class="px-3 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 whitespace-nowrap">
         💻 Comandos & CLI
       </button>
     </nav>
-
-    <!-- Acciones Derecha -->
-    <div class="flex items-center gap-2">
-      <button onclick="triggerLocalSelfUpdate()" id="btn-ota-update" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 border border-amber-500/50 text-amber-300 hover:bg-amber-500/30 transition-colors" title="Comprobar e instalar última versión disponible">
-        🔄 Actualizar (v2.4.0)
-      </button>
-      <button onclick="openModal('scanner')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30 transition-colors">
-        📡 Escanear GPS Cercanos
-      </button>
-      <button onclick="toggleSimulation()" id="btn-sim" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 border border-slate-700 text-cyan-300 hover:bg-slate-700 transition-colors">
-        ⏸ Pausar Flota
-      </button>
-      <button onclick="openModal('alerts')" class="relative p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors" title="Alertas de Seguridad">
-        🔔
-        <span id="hdr-alert-badge" class="hidden absolute -top-1 -right-1 px-1.5 bg-rose-600 text-white font-mono text-[10px] font-bold rounded-full">0</span>
-      </button>
-      <button onclick="openModal('connect')" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md">
-        📲 Conectar Dispositivos
-      </button>
-      <button onclick="openModal('newdevice')" class="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-sm">
-        + Nuevo GPS
-      </button>
-    </div>
   </header>
 
   <!-- 3. PANEL LATERAL DE FLOTA COLAPSABLE (IZQUIERDA) -->
-  <aside id="fleet-sidebar" class="absolute top-16 left-3 bottom-3 w-80 z-20 bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300">
+  <aside id="fleet-sidebar" class="absolute top-24 left-3 bottom-3 w-80 z-20 bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300">
     <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
       <div>
         <h2 class="font-display text-xs font-bold uppercase tracking-wider text-slate-200">Unidades GPS Activas</h2>
@@ -636,6 +645,9 @@ LOCAL_DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
 
     <div class="flex items-center gap-2 shrink-0">
+      <button onclick="openModal('scanner')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-xs font-semibold text-emerald-300 border border-emerald-500/40">
+        📡 Radar
+      </button>
       <button onclick="openModal('history')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700">
         ⏱️ Ruta
       </button>
@@ -1097,10 +1109,10 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       try {
         const res = await fetch('/api/self-update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         const d = await res.json();
-        btn.textContent = '✓ ' + (d.version || 'v2.4.0') + ' al día';
+        btn.textContent = '✓ ' + (d.version || 'v2.5.0') + ' al día';
         setTimeout(() => window.location.reload(), 1500);
       } catch (e) {
-        btn.textContent = '✓ v2.4.0 Activa';
+        btn.textContent = '✓ v2.5.0 Activa';
       }
     }
 
@@ -1155,17 +1167,52 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
           box.appendChild(row);
         });
       } else if (currentScannerTab === 'lan') {
-        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs"><div class="font-bold text-cyan-400">Puertos y Servicios GPS en Red Local (LAN / Kali)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">127.0.0.1:8765 -> Agente AegisGPS Kali (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">127.0.0.1:2947 -> Demonio gpsd JSON Socket (EN ESCUCHA)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-amber-300">0.0.0.0:5023   -> Receptor TCP Teltonika / Queclink (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-purple-300">0.0.0.0:8883   -> Broker Mosquitto MQTT-TLS (ACTIVO)</div></div>';
+        const lanDiv = document.createElement('div');
+        lanDiv.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
+        lanDiv.innerHTML = '<div class="font-bold text-cyan-400">Puertos y Servicios GPS en Red Local (LAN / Kali)</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono"><div class="p-2.5 rounded bg-slate-900 text-emerald-300">127.0.0.1:8765 · Agente Kali (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 text-cyan-300">127.0.0.1:2947 · Socket gpsd (LISTO)</div><div class="p-2.5 rounded bg-slate-900 text-amber-300">0.0.0.0:5023 · TCP Teltonika (ACTIVO)</div><div class="p-2.5 rounded bg-slate-900 text-purple-300">0.0.0.0:8883 · MQTT-TLS (ACTIVO)</div></div><div class="pt-2 border-t border-slate-800 grid grid-cols-3 gap-2"><input id="lan-name" value="Nodo GPS LAN" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white" /><input id="lan-ip" value="192.168.1.120" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 font-mono text-cyan-300" /><input id="lan-port" value="5023" class="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 font-mono text-emerald-300" /></div>';
+        const lbtn = document.createElement('button');
+        lbtn.className = 'px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold';
+        lbtn.textContent = '+ Sondear IP y Vincular Nodo LAN al Mapa';
+        lbtn.onclick = async () => {
+          const nm = document.getElementById('lan-name').value || 'Nodo LAN';
+          const ip = document.getElementById('lan-ip').value || '192.168.1.120';
+          const pt = document.getElementById('lan-port').value || '5023';
+          await fetch('/api/devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: 'lan-' + Date.now(), name: nm + ' (' + ip + ':' + pt + ')', color: '#10b981', latitude: c.lat + 0.0012, longitude: c.lng - 0.0012 })
+          });
+          await fetchState();
+          openModal('none');
+        };
+        lanDiv.appendChild(lbtn);
+        box.appendChild(lanDiv);
       } else if (currentScannerTab === 'usb') {
-        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs"><div class="font-bold text-emerald-400">Interfaces Serie Hardware USB / UART Detectadas</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyACM0 -> u-blox NEO-M9N (115200 bps) · $GNGGA,101245.00,4248.7860,N,00138.4060,W*4B</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyUSB0 -> GlobalSat SiRF Star IV (9600 bps) · $GPRMC,101246.00,A,4248.9840,N,00138.4420,W*7C</div></div>';
+        const usbDiv = document.createElement('div');
+        usbDiv.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
+        usbDiv.innerHTML = '<div class="font-bold text-emerald-400">Interfaces Serie Hardware USB / UART Detectadas</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyACM0 -> u-blox NEO-M9N (115200 bps) · $GNGGA,101245.00,4248.7860,N,00138.4060,W*4B</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyUSB0 -> GlobalSat SiRF Star IV (9600 bps) · $GPRMC,101246.00,A,4248.9840,N,00138.4420,W*7C</div><div class="p-2.5 rounded bg-slate-900 font-mono text-slate-200">/dev/ttyAMA0 -> UART GPIO Hardware (9600 bps) · $GNRMC,101247.00,A,4249.1520,N,00138.7660,W*7E</div>';
+        const ubtn = document.createElement('button');
+        ubtn.className = 'px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold';
+        ubtn.textContent = '+ Vincular Receptor USB (/dev/ttyACM0) al Mapa';
+        ubtn.onclick = async () => {
+          await fetch('/api/devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: 'usb-ttyacm0', name: 'Receptor USB u-blox (/dev/ttyACM0)', color: '#06b6d4', latitude: c.lat + 0.0005, longitude: c.lng + 0.0006 })
+          });
+          await fetchState();
+          openModal('none');
+        };
+        usbDiv.appendChild(ubtn);
+        box.appendChild(usbDiv);
       } else if (currentScannerTab === 'spectrum') {
-        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs"><div class="font-bold text-emerald-400">Espectro RF GNSS (0% Jamming · 4 Constelaciones)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">GPS L1 (1575.42 MHz)     -> SNR 47 dB-Hz · 11 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">Galileo E1 (1575.42 MHz) -> SNR 45 dB-Hz · 8 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-amber-300">GLONASS L1 (1602.00 MHz) -> SNR 42 dB-Hz · 7 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-purple-300">LoRa ISM (868.10 MHz)    -> SNR 36 dB-Hz · Balizas RF</div></div>';
+        box.innerHTML = '<div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs"><div class="font-bold text-emerald-400">Espectro RF GNSS (0% Jamming · 4 Constelaciones · HDOP 0.6)</div><div class="p-2.5 rounded bg-slate-900 font-mono text-cyan-300">GPS L1 C/A (1575.42 MHz)  -> SNR 47 dB-Hz · Piso -112 dBm · 11 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-300">Galileo E1 (1575.42 MHz)  -> SNR 45 dB-Hz · Piso -113 dBm · 8 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-amber-300">GLONASS L1 (1602.00 MHz)  -> SNR 42 dB-Hz · Piso -110 dBm · 7 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-purple-300">BeiDou B1I (1561.098 MHz) -> SNR 39 dB-Hz · Piso -109 dBm · 6 Satélites</div><div class="p-2.5 rounded bg-slate-900 font-mono text-emerald-400">LoRaWAN EU868 (868.1 MHz) -> SNR 36 dB-Hz · Piso -118 dBm · 4 Balizas RF</div></div>';
       } else if (currentScannerTab === 'geo') {
         const wrap = document.createElement('div');
         wrap.className = 'p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs';
-        wrap.innerHTML = '<div class="font-bold text-white">Crear Geocerca de Vigilancia con el Radio de Escaneo (2500m)</div><p class="text-slate-400">Genera un perímetro circular alrededor de tu ubicación actual para alertar sobre cualquier GPS cercano.</p>';
+        wrap.innerHTML = '<div class="font-bold text-white">Crear Geocerca de Vigilancia con el Radio de Escaneo (2500m) y Exportar Informe</div><p class="text-slate-400">Genera un perímetro circular alrededor de tu ubicación actual o descarga el informe JSON de balizas detectadas.</p>';
         const btn = document.createElement('button');
-        btn.className = 'px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold';
+        btn.className = 'px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold mr-2';
         btn.textContent = '🚧 Activar Geocerca de Proximidad en el Mapa';
         btn.onclick = async () => {
           await fetch('/api/geofences', {
@@ -1176,7 +1223,18 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
           await fetchState();
           openModal('none');
         };
+        const expBtn = document.createElement('button');
+        expBtn.className = 'px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-cyan-300 font-bold';
+        expBtn.textContent = '📥 Exportar Informe JSON';
+        expBtn.onclick = () => {
+          const blob = new Blob([JSON.stringify(nearTemplates, null, 2)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'escaner-gps-cercanos.json';
+          a.click();
+        };
         wrap.appendChild(btn);
+        wrap.appendChild(expBtn);
         box.appendChild(wrap);
       }
     }
