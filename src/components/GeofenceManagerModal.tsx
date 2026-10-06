@@ -17,6 +17,7 @@ interface GeofenceManagerModalProps {
   geofences: Geofence[];
   onAddGeofence: (geofence: Partial<Geofence>) => Promise<void>;
   onDeleteGeofence: (id: string) => Promise<void>;
+  defaultCenter?: [number, number];
 }
 
 export const GeofenceManagerModal: React.FC<GeofenceManagerModalProps> = ({
@@ -25,11 +26,12 @@ export const GeofenceManagerModal: React.FC<GeofenceManagerModalProps> = ({
   geofences,
   onAddGeofence,
   onDeleteGeofence,
+  defaultCenter = [42.8150, -1.6425],
 }) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<'circle' | 'polygon'>('circle');
-  const [lat, setLat] = useState('40.4168');
-  const [lng, setLng] = useState('-3.7038');
+  const [lat, setLat] = useState(() => defaultCenter[0].toFixed(6));
+  const [lng, setLng] = useState(() => defaultCenter[1].toFixed(6));
   const [radius, setRadius] = useState('1500');
   const [polygonCoords, setPolygonCoords] = useState(
     '[[40.410, -3.710], [40.425, -3.710], [40.425, -3.690], [40.410, -3.690]]'
@@ -181,9 +183,22 @@ export const GeofenceManagerModal: React.FC<GeofenceManagerModalProps> = ({
 
           {/* Right: Add Geofence Form */}
           <div className="w-full md:w-1/2 p-5 space-y-4">
-            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              Nueva Zona de Seguridad
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                Nueva Zona de Seguridad
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setLat(defaultCenter[0].toFixed(6));
+                  setLng(defaultCenter[1].toFixed(6));
+                }}
+                className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Usar ubicación actual</span>
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
               {errorMsg && (

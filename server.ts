@@ -1249,13 +1249,13 @@ app.get('/api/version', (req: Request, res: Response) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.json({
     version: AEGIS_APP_VERSION,
-    build: '2026.10.04-kali-ota',
+    build: '2026.10.06-kali-ota-v27',
     releaseDate: new Date().toISOString(),
     changelog: [
-      'v2.4.0: Sistema de Actualización OTA en 1 clic (/api/self-update y comando aegis-gps update)',
-      'v2.4.0: Escáner Táctico de Dispositivos GPS Cercanos (Radar RF 360°, LAN, USB y Bluetooth BLE)',
-      'v2.3.0: Interfaz Táctica Completa integrada en el nodo local Kali Linux (http://127.0.0.1:8765)',
-      'v2.2.0: Corrección automática del repositorio Docker en Kali Linux y soporte de clave AES-256 normalizada',
+      'v2.7.0: Motor de Auto-Actualización OTA en 1 Clic reparado (Triple vía CORS-Simple + Form Bridge + Reinicio instantáneo en :8765)',
+      'v2.6.0: Conector Universal GPS Plug & Play en 1 Clic con Escáner de Proximidad (Móviles, USB, BLE, OBD-II, Teltonika, LoRa y ESP32)',
+      'v2.5.0: Interfaz Táctica 100% Unificada y Suite de 6 Apartados en el Escáner de Dispositivos GPS Cercanos',
+      'v2.4.0: Plataforma Web Completa integrada en el nodo local Kali Linux (http://127.0.0.1:8765)',
     ],
     pythonScriptUrl: `${serverOrigin}/api/debian/aegis_client.py`,
     installerUrl: `${serverOrigin}/api/debian/install.sh`,

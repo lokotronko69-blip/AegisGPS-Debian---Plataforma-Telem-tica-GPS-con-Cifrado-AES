@@ -23,7 +23,7 @@ import {
 } from './types/gps';
 import { playAlertSound } from './utils/audio';
 import { encryptAes256Gcm, generateAes256KeyHex } from './utils/crypto';
-import { AEGIS_APP_VERSION, generateDebianPythonScript } from './utils/debianScripts';
+import { AEGIS_APP_VERSION, pushLocalKaliOtaUpdate } from './utils/debianScripts';
 
 export default function App() {
   const [devices, setDevices] = useState<GpsDevice[]>([]);
@@ -113,6 +113,10 @@ export default function App() {
           if (data.devices) {
             const unique = Array.from(new Map<string, GpsDevice>(data.devices.map((d: GpsDevice) => [d.id, d])).values());
             setDevices(unique);
+            setSelectedDevice((prev) => {
+              if (!prev) return unique[0] || null;
+              return unique.find((d) => d.id === prev.id) || prev;
+            });
           }
           if (data.alerts) setAlerts(data.alerts);
           if (data.cryptoLogs) setCryptoLogs(data.cryptoLogs);
@@ -133,6 +137,12 @@ export default function App() {
             const map = new Map<string, GpsDevice>(prev.map((d) => [d.id, d]));
             map.set(payload.device.id, payload.device);
             return Array.from(map.values());
+          });
+
+          setSelectedDevice((prev) => {
+            if (!prev) return payload.device;
+            if (prev.id === payload.device.id) return payload.device;
+            return prev;
           });
 
           setPositionsHistory((prev) => {
@@ -257,25 +267,21 @@ export default function App() {
 
     async function probeAndRelayLocalDaemon() {
       try {
-        const res = await fetch('http://127.0.0.1:8765/telemetry');
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 1200);
+        const res = await fetch('http://127.0.0.1:8765/telemetry', { signal: ctrl.signal });
+        clearTimeout(timer);
         if (!res.ok || isCancelled) return;
         const pkt = await res.json();
         if (pkt && pkt.version !== AEGIS_APP_VERSION) {
           setLocalUpdateAvailable(true);
-          // Attempt automatic OTA upgrade of local Kali node if it supports /api/self-update
-          try {
-            const latestPy = generateDebianPythonScript(window.location.origin);
-            const upRes = await fetch('http://127.0.0.1:8765/api/self-update', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pythonCode: latestPy }),
-            });
-            if (upRes.ok) {
-              setLocalUpdateAvailable(false);
-            }
-          } catch {
-            // Local node is v1.0; user can click Actualizar button
-          }
+          pushLocalKaliOtaUpdate(window.location.origin)
+            .then((resOta) => {
+              if (resOta.verifiedVersion === AEGIS_APP_VERSION) {
+                setLocalUpdateAvailable(false);
+              }
+            })
+            .catch(() => {});
         } else {
           setLocalUpdateAvailable(false);
         }
@@ -658,6 +664,14 @@ export default function App() {
         geofences={geofences}
         onAddGeofence={handleAddGeofence}
         onDeleteGeofence={handleDeleteGeofence}
+        defaultCenter={[
+          realLocationCoords?.lat ||
+            selectedDevice?.lastPosition?.latitude ||
+            42.8150,
+          realLocationCoords?.lng ||
+            selectedDevice?.lastPosition?.longitude ||
+            -1.6425,
+        ]}
       />
 
       <DebianIntegrationModal

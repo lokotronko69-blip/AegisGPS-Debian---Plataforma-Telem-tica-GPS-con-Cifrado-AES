@@ -375,6 +375,7 @@ export const MapView: React.FC<MapViewProps> = ({
       const isSelected = dev.id === selectedDevice?.id;
 
       // Update or create marker
+      const popupContent = buildPopupHtml(dev, pos);
       let marker = markersRef.current.get(dev.id);
       if (!marker) {
         marker = L.marker(latLng, {
@@ -385,33 +386,34 @@ export const MapView: React.FC<MapViewProps> = ({
           onSelectDevice(dev);
         });
 
+        marker.bindPopup(popupContent, {
+          closeButton: true,
+          className: 'gps-custom-popup',
+        });
+
+        // Attach event listeners once when popup opens
+        marker.on('popupopen', (e) => {
+          const popupEl = e.popup.getElement();
+          if (popupEl) {
+            const histBtn = popupEl.querySelector(`#btn-hist-${dev.id}`);
+            if (histBtn) {
+              histBtn.addEventListener('click', () => onOpenHistory(dev));
+            }
+            const cryptoBtn = popupEl.querySelector(`#btn-crypto-${dev.id}`);
+            if (cryptoBtn) {
+              cryptoBtn.addEventListener('click', () => onOpenCrypto(dev));
+            }
+          }
+        });
+
         markersRef.current.set(dev.id, marker);
       } else {
         marker.setLatLng(latLng);
         marker.setIcon(createVehicleIcon(dev, pos, isSelected));
-      }
-
-      // Update popup
-      const popupContent = buildPopupHtml(dev, pos);
-      marker.bindPopup(popupContent, {
-        closeButton: true,
-        className: 'gps-custom-popup',
-      });
-
-      // Attach event listeners when popup opens
-      marker.on('popupopen', (e) => {
-        const popupEl = e.popup.getElement();
-        if (popupEl) {
-          const histBtn = popupEl.querySelector(`#btn-hist-${dev.id}`);
-          if (histBtn) {
-            histBtn.addEventListener('click', () => onOpenHistory(dev));
-          }
-          const cryptoBtn = popupEl.querySelector(`#btn-crypto-${dev.id}`);
-          if (cryptoBtn) {
-            cryptoBtn.addEventListener('click', () => onOpenCrypto(dev));
-          }
+        if (marker.getPopup()) {
+          marker.setPopupContent(popupContent);
         }
-      });
+      }
 
       // Update Breadcrumb Polyline Trail
       const history = positionsHistory.get(dev.id) || [];

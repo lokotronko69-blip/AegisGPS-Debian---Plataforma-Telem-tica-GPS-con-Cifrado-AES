@@ -73,11 +73,14 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
       case 'truck':
         return <Truck className="w-4 h-4 text-cyan-400" />;
       case 'car':
+      case 'patrol':
         return <Car className="w-4 h-4 text-emerald-400" />;
       case 'van':
         return <Truck className="w-4 h-4 text-amber-400" />;
       case 'drone':
         return <Navigation className="w-4 h-4 text-purple-400" />;
+      case 'person':
+        return <MapPin className="w-4 h-4 text-cyan-300" />;
       default:
         return <Radio className="w-4 h-4 text-slate-400" />;
     }

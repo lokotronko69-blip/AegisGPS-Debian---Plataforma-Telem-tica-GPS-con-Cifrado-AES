@@ -1,4 +1,13 @@
-export type DeviceProtocol = 'aes-encrypted-json' | 'teltonika-avl' | 'nmea-0183' | 'osmand' | 'gt06' | 'mqtt-tls';
+export type DeviceProtocol =
+  | 'aes-encrypted-json'
+  | 'teltonika-avl'
+  | 'teltonika-codec8'
+  | 'nmea-0183'
+  | 'nmea-0183-aes'
+  | 'osmand'
+  | 'gt06'
+  | 'mqtt-tls'
+  | 'mqtt-tls-aes';
 
 export type DeviceStatus = 'moving' | 'idle' | 'stopped' | 'offline' | 'alert';
 
@@ -30,7 +39,7 @@ export interface GpsDevice {
   imei: string;
   name: string;
   model: string;
-  vehicleType: 'truck' | 'car' | 'van' | 'motorcycle' | 'drone' | 'cargo' | 'person';
+  vehicleType: 'truck' | 'car' | 'van' | 'motorcycle' | 'drone' | 'cargo' | 'person' | 'patrol';
   protocol: DeviceProtocol;
   aesKeyHex: string; // 64 hex characters (32 bytes = 256 bits)
   speedLimit: number; // km/h threshold
