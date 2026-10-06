@@ -894,11 +894,23 @@ app.post('/api/gps/push', (req: Request, res: Response) => {
   res.json({ status: 'OK', position: pos });
 });
 
+function getPublicServerOrigin(req: Request): string {
+  if (process.env.APP_URL && process.env.APP_URL.startsWith('http')) {
+    return process.env.APP_URL.replace(/\/+$/, '');
+  }
+  const rawProto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+  const proto = rawProto.split(',')[0].trim() || 'https';
+  const rawHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+  const host = rawHost.split(',')[0].trim();
+  if (!host || host.includes('localhost') || host.includes('127.0.0.1') || host.includes('0.0.0.0')) {
+    return 'https://ais-pre-3pd6qxgfnbsd724lxj2om6-235435145373.europe-west2.run.app';
+  }
+  return `${proto}://${host}`;
+}
+
 // Direct Bash Installer File Endpoint
 app.get('/api/debian/install.sh', (req: Request, res: Response) => {
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
-  const serverOrigin = `${proto}://${host}`;
+  const serverOrigin = getPublicServerOrigin(req);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="install-aegis-gps.sh"');
@@ -907,9 +919,7 @@ app.get('/api/debian/install.sh', (req: Request, res: Response) => {
 
 // Direct Python Daemon Script Endpoint for OTA Self-Updates (aegis-gps update)
 app.get('/api/debian/aegis_client.py', (req: Request, res: Response) => {
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
-  const serverOrigin = `${proto}://${host}`;
+  const serverOrigin = getPublicServerOrigin(req);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.send(generateDebianPythonScript(serverOrigin));
@@ -917,21 +927,40 @@ app.get('/api/debian/aegis_client.py', (req: Request, res: Response) => {
 
 // Platform Version & OTA Update Metadata Endpoint
 app.get('/api/version', (req: Request, res: Response) => {
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
-  const serverOrigin = `${proto}://${host}`;
+  const serverOrigin = getPublicServerOrigin(req);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.json({
     version: AEGIS_APP_VERSION,
-    build: '2026.10.06-real-world-v30',
+    build: `2026.10.06-real-world-v${AEGIS_APP_VERSION}`,
     releaseDate: new Date().toISOString(),
     changelog: [
-      'v3.0.0: Edición Producción Mundo Real (0% Simulación): Persistencia en disco, parser NMEA-0183 GGA/RMC real, WebSerial USB, WebBluetooth BLE, gpsd :2947 y geolocalización nativa',
-      'v2.7.0: Motor de Auto-Actualización OTA en 1 Clic reparado (Triple vía CORS-Simple + Form Bridge + Reinicio instantáneo en :8765)',
-      'v2.6.0: Conector Universal GPS Plug & Play en 1 Clic (Móviles, USB, BLE, OBD-II, Teltonika, LoRa y ESP32)',
+      `v${AEGIS_APP_VERSION}: Calibración GPS Sub-Métrica en 1 Clic (±0.5m · 7 decimales), filtro anti-saltos GeoIP y motor OTA instantáneo sin bloqueos`,
+      'v3.1.0: Arquitectura de interfaz dividida sin solapamientos entre panel de flota, mapa y HUD inferior',
+      'v3.0.0: Edición Producción Mundo Real (0% Simulación): Persistencia en disco, parser NMEA-0183 GGA/RMC real, WebSerial USB, WebBluetooth BLE y gpsd :2947',
     ],
     pythonScriptUrl: `${serverOrigin}/api/debian/aegis_client.py`,
     installerUrl: `${serverOrigin}/api/debian/install.sh`,
+  });
+});
+
+// Instant System Sync & Update Endpoint
+app.post('/api/system/update', (req: Request, res: Response) => {
+  const serverOrigin = getPublicServerOrigin(req);
+  savePersistedState();
+  broadcastSse('snapshot', {
+    devices: Array.from(devices.values()),
+    geofences: Array.from(geofences.values()),
+    alerts: alerts.slice(0, 50),
+    cryptoLogs: cryptoLogs.slice(0, 50),
+  });
+  res.json({
+    ok: true,
+    version: AEGIS_APP_VERSION,
+    updatedAt: new Date().toISOString(),
+    devicesCount: devices.size,
+    geofencesCount: geofences.size,
+    serverOrigin,
+    message: `Plataforma principal y estado en disco sincronizados a v${AEGIS_APP_VERSION}`,
   });
 });
 

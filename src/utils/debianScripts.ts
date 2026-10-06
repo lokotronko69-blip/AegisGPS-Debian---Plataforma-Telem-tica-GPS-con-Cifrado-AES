@@ -554,7 +554,7 @@ LOCAL_DASHBOARD_HTML = "<!DOC" + "TYPE html>" + r"""
         <div class="flex items-center gap-2 font-display text-base font-bold text-white cursor-pointer" onclick="openModal('none')">
           <div class="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">🛡️</div>
           <span>AegisGPS Kali / Debian</span>
-          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v3.0.0 REAL</span>
+          <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v${AEGIS_APP_VERSION} REAL</span>
         </div>
         <div class="hidden xl:flex items-center gap-2 text-xs text-slate-400 pl-3 border-l border-slate-800 font-mono">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -573,8 +573,8 @@ LOCAL_DASHBOARD_HTML = "<!DOC" + "TYPE html>" + r"""
           🔔
           <span id="hdr-alert-badge" class="hidden absolute -top-1 -right-1 px-1.5 bg-rose-600 text-white font-mono text-[10px] font-bold rounded-full">0</span>
         </button>
-        <button onclick="openModal('updater'); triggerLocalSelfUpdate();" id="btn-ota-update" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 border border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors cursor-pointer" title="Actualizar aplicación ahora en 1 clic">
-          ⬆️ Actualizar v3.0.0
+        <button onclick="openModal('updater')" id="btn-ota-update" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 border border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors cursor-pointer" title="Abrir centro de actualización OTA">
+          ⬆️ Actualizar v${AEGIS_APP_VERSION}
         </button>
         <button onclick="openModal('scanner')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30 transition-colors">
           📡 Escanear GPS Cercanos
@@ -1091,11 +1091,11 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
       </div>
     </div>
 
-    <!-- MODAL 9: CENTRO DE ACTUALIZACIÓN OTA (v3.0.0) -->
+    <!-- MODAL 9: CENTRO DE ACTUALIZACIÓN OTA (v${AEGIS_APP_VERSION}) -->
     <div id="modal-updater" class="hidden w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
         <div>
-          <h2 class="font-display text-base font-bold text-white">⬆️ Centro de Actualización AegisGPS (OTA · v3.0.0)</h2>
+          <h2 class="font-display text-base font-bold text-white">⬆️ Centro de Actualización AegisGPS (OTA · v${AEGIS_APP_VERSION})</h2>
           <p class="text-xs text-slate-400">Sincroniza la plataforma local Kali Linux y aplica la última versión disponible</p>
         </div>
         <button onclick="openModal('none')" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">✕</button>
@@ -1104,8 +1104,8 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         <div class="grid grid-cols-2 gap-3">
           <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
             <div class="text-slate-400 font-semibold">Versión Activa en Kali (:8765)</div>
-            <div class="font-mono text-lg font-bold text-emerald-400 mt-1">v3.0.0 REAL-WORLD</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">0% Simulación · Hardware NMEA/gpsd + AES-256</div>
+            <div class="font-mono text-lg font-bold text-emerald-400 mt-1">v${AEGIS_APP_VERSION} REAL-WORLD</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">0% Simulación · Precisión Sub-Métrica 7 Decimales</div>
           </div>
           <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
             <div class="text-slate-400 font-semibold">Estado del Servicio Systemd</div>
@@ -1121,7 +1121,7 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
               <div class="text-slate-300 mt-0.5">Descarga los últimos módulos del servidor, limpia la caché y reinicia el nodo local sin perder tus dispositivos.</div>
             </div>
             <button onclick="triggerLocalSelfUpdate()" id="btn-modal-update-run" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg cursor-pointer">
-              🔄 Actualizar Ahora a v3.0.0
+              🔄 Actualizar Ahora a v${AEGIS_APP_VERSION}
             </button>
           </div>
           <div id="ota-progress-wrap" class="hidden space-y-1.5 pt-2 border-t border-emerald-800/50">
@@ -1395,17 +1395,17 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
     const CLOUD_ORIGIN = "${serverOrigin}";
 
     async function waitAndReloadLocalServer() {
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 400));
+      for (let i = 0; i < 6; i++) {
+        await new Promise(r => setTimeout(r, 300));
         try {
           const r = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store' });
           if (r.ok) {
-            window.location.href = '/?updated=' + Date.now();
+            window.location.replace('/?updated=' + Date.now());
             return;
           }
         } catch (e) {}
       }
-      window.location.href = '/?updated=' + Date.now();
+      window.location.replace('/?updated=' + Date.now());
     }
 
     async function triggerLocalSelfUpdate() {
@@ -1430,12 +1430,20 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         let fetchedPy = null;
         const candidateOrigins = [
           CLOUD_ORIGIN,
-          CLOUD_ORIGIN.replace('ais-dev-', 'ais-pre-')
+          CLOUD_ORIGIN.replace('ais-dev-', 'ais-pre-'),
+          'https://ais-pre-3pd6qxgfnbsd724lxj2om6-235435145373.europe-west2.run.app',
+          'https://ais-dev-3pd6qxgfnbsd724lxj2om6-235435145373.europe-west2.run.app'
         ];
         for (const orig of candidateOrigins) {
-          if (!orig || !orig.startsWith('http')) continue;
+          if (!orig || !orig.startsWith('http') || orig.includes('localhost:3000')) continue;
           try {
-            const pyRes = await fetch(orig + '/api/debian/aegis_client.py?t=' + Date.now(), { cache: 'no-store' });
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 1400);
+            const pyRes = await fetch(orig + '/api/debian/aegis_client.py?t=' + Date.now(), {
+              cache: 'no-store',
+              signal: ctrl.signal
+            });
+            clearTimeout(timer);
             if (pyRes.ok) {
               const txt = await pyRes.text();
               if (txt && txt.includes('LocalBridgeHandler')) {
@@ -1458,9 +1466,9 @@ aegis-gps restart    # Reiniciar el daemon systemd</pre>
         const d = await res.json();
 
         if (bar) bar.style.width = '100%';
-        if (msg) msg.textContent = '✓ ' + (d.message || 'Plataforma actualizada a v3.0.0. Reiniciando y recargando...');
-        if (btn) btn.textContent = '✓ v3.0.0 al día';
-        if (modalBtn) modalBtn.textContent = '✓ ¡Actualizado a v3.0.0!';
+        if (msg) msg.textContent = '✓ ' + (d.message || 'Plataforma actualizada a v${AEGIS_APP_VERSION}. Reiniciando y recargando...');
+        if (btn) btn.textContent = '✓ v${AEGIS_APP_VERSION} al día';
+        if (modalBtn) modalBtn.textContent = '✓ ¡Actualizado a v${AEGIS_APP_VERSION}!';
 
         await waitAndReloadLocalServer();
       } catch (e) {
@@ -1806,7 +1814,7 @@ class LocalBridgeHandler(BaseHTTPRequestHandler):
     def _send_cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Private-Network", "true")
 
     def do_OPTIONS(self):
@@ -1976,15 +1984,18 @@ class LocalBridgeHandler(BaseHTTPRequestHandler):
             if not new_code:
                 urls_to_try = [
                     SERVER_ORIGIN + "/api/debian/aegis_client.py?t=" + str(int(time.time())),
-                    SERVER_ORIGIN.replace("ais-dev-", "ais-pre-") + "/api/debian/aegis_client.py?t=" + str(int(time.time()))
+                    SERVER_ORIGIN.replace("ais-dev-", "ais-pre-") + "/api/debian/aegis_client.py?t=" + str(int(time.time())),
+                    "https://ais-pre-3pd6qxgfnbsd724lxj2om6-235435145373.europe-west2.run.app/api/debian/aegis_client.py?t=" + str(int(time.time()))
                 ]
                 for u in urls_to_try:
+                    if "localhost:3000" in u:
+                        continue
                     try:
                         req = urllib.request.Request(
                             u,
-                            headers={"User-Agent": "AegisGPS-Updater/2.7", "Accept": "text/plain"}
+                            headers={"User-Agent": "AegisGPS-Updater/3.2", "Accept": "text/plain"}
                         )
-                        with urllib.request.urlopen(req, timeout=4) as resp:
+                        with urllib.request.urlopen(req, timeout=2.5) as resp:
                             if resp.status == 200:
                                 candidate = resp.read().decode("utf-8", errors="ignore")
                                 if "LocalBridgeHandler" in candidate and html_marker not in candidate[:300].lower():
@@ -2005,10 +2016,14 @@ class LocalBridgeHandler(BaseHTTPRequestHandler):
                             pass
                     self._json_res({"ok": True, "version": APP_VERSION, "updated": True, "message": f"Plataforma actualizada a v{APP_VERSION}. Reiniciando servicio..."})
                     def restart_proc():
-                        time.sleep(0.35)
+                        time.sleep(0.25)
                         try:
                             if http_server_instance:
-                                http_server_instance.socket.close()
+                                http_server_instance.server_close()
+                        except Exception:
+                            pass
+                        try:
+                            os.closerange(3, 256)
                         except Exception:
                             pass
                         script_to_run = "/opt/aegis-gps/aegis_client.py" if os.path.exists("/opt/aegis-gps/aegis_client.py") else target_path
@@ -2238,8 +2253,7 @@ export function downloadScriptFile(filename: string, content: string): void {
 
 /**
  * Envía el código actualizado de aegis_client.py al nodo local Kali Linux (:8765)
- * usando triple vía (CORS simple text/plain, no-cors simple POST y formulario oculto text/plain)
- * para evitar bloqueos de preflight OPTIONS o Mixed Content.
+ * en paralelo con timeout rápido (~900ms) para nunca bloquear el botón de actualización.
  */
 export async function pushLocalKaliOtaUpdate(
   serverOrigin: string
@@ -2253,102 +2267,65 @@ export async function pushLocalKaliOtaUpdate(
 
   let delivered = false;
 
-  // Vía 1: Fetch simple CORS (Content-Type: text/plain evita preflight OPTIONS)
-  for (const ep of endpoints) {
+  try {
+    await Promise.any(
+      endpoints.map(async (ep) => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 900);
+        try {
+          const res = await fetch(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+            body: payloadStr,
+            signal: ctrl.signal,
+          });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error('Non-200');
+          delivered = true;
+          return true;
+        } catch (err) {
+          clearTimeout(timer);
+          throw err;
+        }
+      })
+    );
+  } catch {
+    // Fallback rápido no-cors (500ms) por si el servicio antiguo no enviaba cabeceras CORS completas
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 2500);
-      const res = await fetch(ep, {
+      const timer = setTimeout(() => ctrl.abort(), 500);
+      await fetch('http://127.0.0.1:8765/api/self-update', {
         method: 'POST',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: payloadStr,
         signal: ctrl.signal,
       });
       clearTimeout(timer);
-      if (res.ok) {
-        delivered = true;
-        break;
-      }
     } catch {
-      // continuar con fallback
+      // nodo local no accesible desde el iframe actual
     }
   }
 
-  // Vía 2: Fetch no-cors simple POST (envía el body aunque el navegador bloquee la lectura CORS)
-  if (!delivered) {
-    for (const ep of endpoints) {
+  if (delivered) {
+    for (let i = 0; i < 2; i++) {
+      await new Promise((r) => setTimeout(r, 350));
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2000);
-        await fetch(ep, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: payloadStr,
+        const timer = setTimeout(() => ctrl.abort(), 600);
+        const checkRes = await fetch('http://127.0.0.1:8765/telemetry?t=' + Date.now(), {
           signal: ctrl.signal,
         });
         clearTimeout(timer);
-        delivered = true;
-        break;
-      } catch {
-        // continuar con fallback
-      }
-    }
-  }
-
-  // Vía 3: Envío mediante <form method="POST" enctype="text/plain"> en iframe oculto
-  if (typeof document !== 'undefined') {
-    try {
-      let iframe = document.getElementById('aegis-ota-hidden-frame') as HTMLIFrameElement | null;
-      if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.id = 'aegis-ota-hidden-frame';
-        iframe.name = 'aegis-ota-hidden-frame';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-      }
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.enctype = 'text/plain';
-      form.action = 'http://127.0.0.1:8765/api/self-update';
-      form.target = 'aegis-ota-hidden-frame';
-      form.style.display = 'none';
-
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = '{"pythonCode":' + JSON.stringify(latestPy) + ',"_pad":"';
-      input.value = '"}';
-      form.appendChild(input);
-
-      document.body.appendChild(form);
-      form.submit();
-      setTimeout(() => {
-        if (form.parentNode) form.parentNode.removeChild(form);
-      }, 2000);
-      delivered = true;
-    } catch {
-      // ignore form fallback error
-    }
-  }
-
-  // Esperar reinicio del proceso local (:8765) y verificar versión
-  for (let i = 0; i < 4; i++) {
-    await new Promise((r) => setTimeout(r, 450));
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 1200);
-      const checkRes = await fetch('http://127.0.0.1:8765/telemetry?t=' + Date.now(), {
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (checkRes.ok) {
-        const pkt = await checkRes.json();
-        if (pkt && pkt.version) {
-          return { delivered: true, verifiedVersion: pkt.version };
+        if (checkRes.ok) {
+          const pkt = await checkRes.json();
+          if (pkt && pkt.version) {
+            return { delivered: true, verifiedVersion: pkt.version };
+          }
         }
+      } catch {
+        // reintentar
       }
-    } catch {
-      // reintentar
     }
   }
 

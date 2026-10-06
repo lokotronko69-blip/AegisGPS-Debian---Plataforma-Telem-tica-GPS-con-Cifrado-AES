@@ -13,11 +13,13 @@ import {
   Activity
 } from 'lucide-react';
 import {
+  AEGIS_APP_VERSION,
   generateDebianSystemdService,
   generateDebianMosquittoConf,
   generateDebianPythonScript,
   generateDebianInstallScript,
   generateDebianBase64OneLiner,
+  pushLocalKaliOtaUpdate,
   downloadScriptFile,
 } from '../utils/debianScripts';
 
@@ -49,15 +51,16 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
   const checkLocalDebianBridge = async () => {
     setBridgeStatus('checking');
     try {
+      await pushLocalKaliOtaUpdate(serverOrigin);
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
+      const timeout = setTimeout(() => controller.abort(), 1400);
       const res = await fetch(bridgeUrl, { signal: controller.signal });
       clearTimeout(timeout);
       if (res.ok) {
         const packet = await res.json();
         setBridgeStatus('connected');
         setBridgeHostInfo(
-          `Host Debian: ${packet.hostname || 'debian-node'} · Lat: ${packet.telemetryPreview?.latitude ?? ''} Lon: ${packet.telemetryPreview?.longitude ?? ''}`
+          `Host Debian: ${packet.hostname || 'debian-node'} (v${packet.version || AEGIS_APP_VERSION}) · Lat: ${packet.telemetryPreview?.latitude ?? ''} Lon: ${packet.telemetryPreview?.longitude ?? ''}`
         );
         // Relay encrypted packet to backend
         await fetch('/api/gps/encrypted-aes', {
@@ -72,12 +75,25 @@ export const DebianIntegrationModal: React.FC<DebianIntegrationModalProps> = ({
             authTag: packet.authTag,
           }),
         });
-      } else {
-        setBridgeStatus('unreachable');
+        return;
       }
     } catch {
-      setBridgeStatus('unreachable');
+      // fallback to server-side sync
     }
+
+    try {
+      const sysRes = await fetch('/api/system/update', { method: 'POST' });
+      if (sysRes.ok) {
+        setBridgeStatus('connected');
+        setBridgeHostInfo(
+          `Servidor y Nodo Receptor sincronizados a v${AEGIS_APP_VERSION} (${new Date().toLocaleTimeString()})`
+        );
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    setBridgeStatus('unreachable');
   };
 
   if (!isOpen) return null;

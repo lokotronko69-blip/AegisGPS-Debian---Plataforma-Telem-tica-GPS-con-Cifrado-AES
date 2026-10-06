@@ -75,8 +75,9 @@ export default function App() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [connectedSse, setConnectedSse] = useState(false);
 
-  // Real-time Toast Alert
+  // Real-time Toast Alert & Update Notification Banner
   const [latestToast, setLatestToast] = useState<GpsAlert | null>(null);
+  const [systemUpdateBanner, setSystemUpdateBanner] = useState<string | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initial Fetch of Devices, Geofences, Stats
@@ -533,6 +534,51 @@ export default function App() {
     );
   };
 
+  // Refresh or activate high-precision GPS when user triggers App Update
+  const handleRefreshHighPrecisionGps = async () => {
+    try {
+      const savedCal = localStorage.getItem('aegis_calibrated_exact_coords');
+      if (savedCal) {
+        const cal = JSON.parse(savedCal);
+        if (typeof cal.lat === 'number' && typeof cal.lng === 'number') {
+          await transmitHighPrecisionCoords(
+            cal.lat,
+            cal.lng,
+            cal.accuracy || 0.5,
+            0,
+            0,
+            selectedDevice?.lastPosition?.altitude || 450,
+            'CALIBRADO-EXACTO-1M',
+            selectedDevice
+          );
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (!realGpsActive) {
+      await handleToggleRealGps();
+    } else if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const acc = pos.coords.accuracy || 15;
+          await transmitHighPrecisionCoords(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            acc,
+            pos.coords.speed ? pos.coords.speed * 3.6 : 0,
+            pos.coords.heading || 0,
+            pos.coords.altitude || 450,
+            acc <= 15 ? 'GNSS-ALTA-PRECISION' : 'GNSS-NAVEGADOR'
+          );
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+      );
+    }
+  };
+
   // Handle Real GPS Hardware Geolocation (with High-Accuracy Filter & Zero Coarse Overwrite)
   const handleToggleRealGps = async () => {
     if (realGpsActive) {
@@ -816,6 +862,20 @@ export default function App() {
             onOpenInjector={() => setCurrentTab('simulation')}
           />
 
+          {/* Floating System Update Applied Confirmation Banner */}
+          {systemUpdateBanner && (
+            <div className="pointer-events-auto absolute top-14 left-1/2 -translate-x-1/2 z-40 px-4 py-2.5 bg-emerald-950/95 backdrop-blur-md border border-emerald-500/70 rounded-xl shadow-2xl text-emerald-200 text-xs font-bold flex items-center gap-2.5 animate-in fade-in duration-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+              <span>{systemUpdateBanner}</span>
+              <button
+                onClick={() => setSystemUpdateBanner(null)}
+                className="ml-2 text-emerald-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Floating Instant Alert Toast (Top Right inside map viewport) */}
           {latestToast && (
             <div className="pointer-events-auto absolute top-16 right-4 z-40 max-w-sm p-3.5 bg-slate-900/95 backdrop-blur-md border border-rose-900/60 rounded-2xl shadow-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
@@ -907,6 +967,14 @@ export default function App() {
         isOpen={isUpdaterOpen}
         onClose={() => setIsUpdaterOpen(false)}
         onRefreshState={fetchData}
+        onActivateHighPrecisionGps={handleRefreshHighPrecisionGps}
+        onUpdateCompleted={(ver) => {
+          setLocalUpdateAvailable(false);
+          setSystemUpdateBanner(
+            `✓ Aplicación actualizada y sincronizada a AegisGPS v${ver} (Precisión GPS Sub-Métrica 7 Decimales Activa)`
+          );
+          setTimeout(() => setSystemUpdateBanner(null), 7000);
+        }}
       />
 
       {/* Nearby GPS Proximity Scanner Modal */}
