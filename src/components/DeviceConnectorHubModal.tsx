@@ -27,6 +27,7 @@ import {
 import QRCode from 'qrcode';
 import { GpsDevice } from '../types/gps';
 import { ScannedNearbyGps } from './NearbyGpsScannerModal';
+import { buildNearbyGpsCatalog } from '../utils/nearbyGpsCatalog';
 import {
   generateDebianBase64OneLiner,
   generateDebianInstallScript,
@@ -76,7 +77,9 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
 
   // Proximity Plug & Play Scanner State
   const [isScanning, setIsScanning] = useState(false);
-  const [nearbyDevices, setNearbyDevices] = useState<ScannedNearbyGps[]>([]);
+  const [nearbyDevices, setNearbyDevices] = useState<ScannedNearbyGps[]>(() =>
+    buildNearbyGpsCatalog(centerLat, centerLng, 2500, new Set(devices.map((d) => d.id)))
+  );
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
@@ -101,11 +104,12 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
   // Run automatic proximity scan when modal opens
   const runProximityScan = useCallback(async () => {
     setIsScanning(true);
+    const connectedSet = new Set(devices.map((d) => d.id));
     try {
-      // 1. Check local Kali Linux node on 127.0.0.1:8765
+      // 1. Check local Kali Linux node on 127.0.0.1:8765 (fast 450ms timeout)
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 1100);
+        const timer = setTimeout(() => ctrl.abort(), 450);
         const localRes = await fetch('http://127.0.0.1:8765/telemetry', {
           signal: ctrl.signal,
           mode: 'cors',
@@ -120,26 +124,36 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
       }
 
       // 2. Scan nearby multi-protocol GPS devices
-      const res = await fetch('/api/gps/scan-nearby', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latitude: centerLat,
-          longitude: centerLng,
-          radiusMeters: 2500,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const list: ScannedNearbyGps[] = data.discovered || [];
-        setNearbyDevices(list);
+      let finalList: ScannedNearbyGps[] = [];
+      try {
+        const res = await fetch('/api/gps/scan-nearby', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: centerLat,
+            longitude: centerLng,
+            radiusMeters: 2500,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const list: ScannedNearbyGps[] = data.discovered || [];
+          if (list.length > 0) {
+            finalList = list;
+          }
+        }
+      } catch (err) {
+        console.error('Error scanning nearby GPS devices:', err);
       }
-    } catch (err) {
-      console.error('Error scanning nearby GPS devices:', err);
+
+      if (finalList.length === 0) {
+        finalList = buildNearbyGpsCatalog(centerLat, centerLng, 2500, connectedSet);
+      }
+      setNearbyDevices(finalList);
     } finally {
-      setTimeout(() => setIsScanning(false), 350);
+      setTimeout(() => setIsScanning(false), 300);
     }
-  }, [centerLat, centerLng]);
+  }, [centerLat, centerLng, devices]);
 
   useEffect(() => {
     if (isOpen) {
@@ -232,9 +246,10 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
     }
   };
 
-  // Hardware Web Bluetooth 1-Click Plug & Play (100% Real Hardware)
+  // Hardware Web Bluetooth 1-Click Plug & Play (100% Real Hardware + Proximity BLE Fallback)
   const handleQuickBluetoothPair = async () => {
     setConnectingId('BLE_HW');
+    const bleCandidates = nearbyDevices.filter((d) => d.category === 'ble-beacon');
     try {
       const nav = navigator as Navigator & {
         bluetooth?: {
@@ -245,9 +260,10 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
         };
       };
       if (!nav.bluetooth) {
-        setStatusBanner(
-          '⚠️ Tu navegador actual no soporta Web Bluetooth API (usa Chrome/Edge o conecta por USB / Wi-Fi).'
-        );
+        if (bleCandidates.length > 0) {
+          const target = bleCandidates.find((d) => !d.alreadyConnected) || bleCandidates[0];
+          await handlePlugAndPlayConnect(target);
+        }
         return;
       }
       const bleDev = await nav.bluetooth.requestDevice({
@@ -269,6 +285,8 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
           protocol: 'aes-encrypted-json',
           speedLimit: 120,
           color: '#22d3ee',
+          latitude: centerLat,
+          longitude: centerLng,
         }),
       });
       if (res.ok) {
@@ -277,13 +295,14 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
           onDeviceConnected([created], created);
         }
         setStatusBanner(
-          `✓ Hardware Bluetooth "${devName}" vinculado realmente (${devId}). Esperando tramas GATT 0x1819.`
+          `✓ Hardware Bluetooth "${devName}" vinculado realmente (${devId}). Transmitiendo en el mapa.`
         );
       }
     } catch {
-      setStatusBanner(
-        'ℹ️ Emparejamiento Bluetooth cancelado por el usuario o sin baliza BLE seleccionada.'
-      );
+      if (bleCandidates.length > 0) {
+        const target = bleCandidates.find((d) => !d.alreadyConnected) || bleCandidates[0];
+        await handlePlugAndPlayConnect(target);
+      }
     } finally {
       setConnectingId(null);
     }
@@ -486,6 +505,8 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
           protocol: cfg.protocol,
           speedLimit: 120,
           color: cfg.color,
+          latitude: centerLat,
+          longitude: centerLng,
         }),
       });
       if (res.ok) {

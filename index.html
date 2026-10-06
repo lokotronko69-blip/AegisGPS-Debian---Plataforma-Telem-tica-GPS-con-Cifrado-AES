@@ -9,6 +9,14 @@
     <meta property="og:description" content="Sistema de monitoreo GPS en tiempo real para Debian Linux con cifrado AES-256, ingesta por MQTT/TCP/HTTPS, mapas interactivos y notificaciones instantáneas." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      window.addEventListener('unhandledrejection', function (event) {
+        var msg = event && event.reason && (event.reason.message || String(event.reason));
+        if (typeof msg === 'string' && (msg.indexOf('WebSocket closed without opened') !== -1 || msg.indexOf('[vite]') !== -1)) {
+          event.preventDefault();
+        }
+      });
+    </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
