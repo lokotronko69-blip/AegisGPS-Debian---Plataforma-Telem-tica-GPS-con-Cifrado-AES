@@ -582,10 +582,27 @@ export default function App() {
         />
       </div>
 
-      {/* 2. Main Interactive Workspace Area (Map + Sidebar + Floating HUDs) */}
-      <div className="relative flex-1 min-h-0 w-full overflow-hidden">
-        {/* Real-World Map as Full-Bleed Background */}
-        <div className="absolute inset-0 z-0">
+      {/* 2. Main Interactive Workspace Area (Non-Overlapping Split Layout: Sidebar + Map) */}
+      <div className="relative flex-1 flex min-h-0 w-full overflow-hidden">
+        {/* Left: Collapsible Device Fleet Sidebar */}
+        <DeviceSidebar
+          devices={devices}
+          selectedDeviceId={selectedDevice?.id || null}
+          onSelectDevice={setSelectedDevice}
+          onDeleteDevice={handleDeleteDevice}
+          onOpenHistory={handleOpenHistory}
+          onOpenCrypto={() => setCurrentTab('crypto')}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          realGpsActive={realGpsActive}
+          onToggleRealGps={handleToggleRealGps}
+          onOpenScanner={() => setIsScannerOpen(true)}
+          onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
+          packetsDecrypted={stats?.packetsDecrypted || 0}
+        />
+
+        {/* Right: Dedicated Real-World Map Viewport (Never covered by Sidebar) */}
+        <div className="relative flex-1 min-w-0 h-full overflow-hidden">
           <MapView
             devices={devices}
             geofences={geofences}
@@ -598,56 +615,33 @@ export default function App() {
             realGpsActive={realGpsActive}
             realLocationCoords={realLocationCoords}
             onOpenScanner={() => setIsScannerOpen(true)}
+            onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
+            onOpenInjector={() => setCurrentTab('simulation')}
           />
-        </div>
 
-        {/* Floating Controls Layer (Passes click-throughs to the real map) */}
-        <div className="absolute inset-0 z-20 pointer-events-none flex">
-          {/* Floating Collapsible Device Fleet Sidebar */}
-          <div className="pointer-events-none h-full">
-            <DeviceSidebar
-              devices={devices}
-              selectedDeviceId={selectedDevice?.id || null}
-              onSelectDevice={setSelectedDevice}
-              onOpenHistory={handleOpenHistory}
-              onOpenCrypto={() => setCurrentTab('crypto')}
-              onDeleteDevice={handleDeleteDevice}
-              isCollapsed={sidebarCollapsed}
-              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-              realGpsActive={realGpsActive}
-              onToggleRealGps={handleToggleRealGps}
-              onOpenScanner={() => setIsScannerOpen(true)}
-              onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
-              packetsDecrypted={stats?.packetsDecrypted || 0}
-            />
-          </div>
-
-          {/* Center / Right Click-through area over map */}
-          <div className="flex-1 pointer-events-none relative">
-            {/* Floating Instant Alert Toast (Top Right) */}
-            {latestToast && (
-              <div className="pointer-events-auto absolute top-14 right-4 z-40 max-w-sm p-3.5 bg-slate-900/95 backdrop-blur-md border border-rose-900/60 rounded-2xl shadow-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
-                <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping mt-1 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>{latestToast.deviceName}</span>
-                    <span className="text-[10px] font-mono text-slate-400">
-                      {new Date(latestToast.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="text-xs text-rose-300 mt-0.5 leading-snug">
-                    {latestToast.message}
-                  </p>
+          {/* Floating Instant Alert Toast (Top Right inside map viewport) */}
+          {latestToast && (
+            <div className="pointer-events-auto absolute top-16 right-4 z-40 max-w-sm p-3.5 bg-slate-900/95 backdrop-blur-md border border-rose-900/60 rounded-2xl shadow-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
+              <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping mt-1 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between text-xs font-bold text-white">
+                  <span>{latestToast.deviceName}</span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {new Date(latestToast.timestamp).toLocaleTimeString()}
+                  </span>
                 </div>
-                <button
-                  onClick={() => setLatestToast(null)}
-                  className="text-slate-400 hover:text-white"
-                >
-                  ×
-                </button>
+                <p className="text-xs text-rose-300 mt-0.5 leading-snug">
+                  {latestToast.message}
+                </p>
               </div>
-            )}
-          </div>
+              <button
+                onClick={() => setLatestToast(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

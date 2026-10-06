@@ -887,6 +887,25 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
                   </div>
                 </div>
 
+                {filteredNearby.length === 0 ? (
+                  <div className="p-5 rounded-xl bg-slate-950/90 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Escáner en Modo Hardware Real (Sin Dispositivos Ficticios)</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        No se detectaron receptores adicionales en espera. Usa las 4 tarjetas superiores para activar el <strong>GPS nativo de este equipo</strong>, emparejar <strong>Bluetooth BLE</strong>, abrir un puerto <strong>USB NMEA-0183</strong> o registrar cualquier rastreador abajo.
+                      </p>
+                    </div>
+                    <button
+                      onClick={runProximityScan}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 text-xs font-semibold shrink-0 cursor-pointer"
+                    >
+                      🔄 Volver a Escanear
+                    </button>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {filteredNearby.map((item) => {
                     const isAlreadyInFleet =
@@ -969,6 +988,7 @@ export const DeviceConnectorHubModal: React.FC<DeviceConnectorHubModalProps> = (
                     );
                   })}
                 </div>
+                )}
               </div>
 
               {/* 4. Universal Instant Plug & Play Generator for Any Custom GPS Type */}

@@ -734,7 +734,7 @@ export const NearbyGpsScannerModal: React.FC<NearbyGpsScannerModalProps> = ({
             </div>
 
             {/* Selected Target Quick Telemetry Box */}
-            {selectedDeviceObj && (
+            {selectedDeviceObj ? (
               <div className="w-full p-3 rounded-xl bg-slate-900/95 border border-slate-800 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-white truncate">{selectedDeviceObj.name}</span>
@@ -761,6 +761,16 @@ export const NearbyGpsScannerModal: React.FC<NearbyGpsScannerModalProps> = ({
                     <span>Analizar</span>
                   </button>
                 </div>
+              </div>
+            ) : (
+              <div className="w-full p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-1.5 text-xs">
+                <div className="font-semibold text-emerald-400 flex items-center justify-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Barrido Hardware 100% Real</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Sin unidades simuladas. Conecta una antena USB, baliza BLE o nodo en red para ver su traza en el radar.
+                </p>
               </div>
             )}
           </div>
@@ -809,7 +819,45 @@ export const NearbyGpsScannerModal: React.FC<NearbyGpsScannerModalProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                  {filteredDiscovered.map((item) => {
+                  {filteredDiscovered.length === 0 ? (
+                    <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 text-center space-y-4">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+                        <Radar className="w-6 h-6" />
+                      </div>
+                      <div className="space-y-1 max-w-lg mx-auto">
+                        <h3 className="text-sm font-bold text-white">
+                          Escáner en Modo Mundo Real (0 Dispositivos Simulados)
+                        </h3>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          El radar solo muestra hardware físico detectado en puertos serie (<code className="text-cyan-300">/dev/ttyUSB*</code>, <code className="text-cyan-300">/dev/ttyACM*</code>), demonios <code className="text-cyan-300">gpsd</code> activos, balizas Bluetooth BLE o receptores transmitiendo en tu red.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                        <button
+                          onClick={() => setActiveTab('usb')}
+                          className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Usb className="w-3.5 h-3.5" />
+                          <span>3. Conectar Antena USB / NMEA</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('ble')}
+                          className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Bluetooth className="w-3.5 h-3.5" />
+                          <span>4. Emparejar Bluetooth BLE</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('lan')}
+                          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Network className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>2. Sondear Red Local LAN</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                  filteredDiscovered.map((item) => {
                     const sig = getSignalQuality(item.rssi);
                     const isAlreadyInFleet =
                       item.alreadyConnected || devices.some((d) => d.id === item.id);
@@ -916,7 +964,8 @@ export const NearbyGpsScannerModal: React.FC<NearbyGpsScannerModalProps> = ({
                         </div>
                       </div>
                     );
-                  })}
+                  })
+                  )}
                 </div>
               </>
             )}

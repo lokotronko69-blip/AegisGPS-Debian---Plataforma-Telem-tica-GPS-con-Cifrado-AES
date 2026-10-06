@@ -53,7 +53,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
   packetsDecrypted = 0,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'moving' | 'idle' | 'stopped'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'moving' | 'idle' | 'offline'>('all');
 
   const rawFiltered = devices.filter((dev) => {
     const matchesSearch = 
@@ -63,6 +63,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
 
     if (!matchesSearch) return false;
     if (statusFilter === 'all') return true;
+    if (statusFilter === 'idle') return dev.status === 'idle' || dev.status === 'stopped';
     return dev.status === statusFilter;
   });
 
@@ -115,14 +116,14 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="pointer-events-auto absolute top-4 left-4 z-20 flex flex-col gap-2">
+      <div className="pointer-events-auto absolute top-3 left-3 z-30 flex items-center gap-2">
         <button
           onClick={onToggleCollapse}
-          className="p-2.5 bg-slate-900/90 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md transition-all flex items-center gap-2 group"
+          className="px-3 py-2 bg-slate-900/95 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md transition-all flex items-center gap-2 group cursor-pointer"
           title="Abrir panel de flota de dispositivos"
         >
           <ChevronRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-          <span className="text-xs font-bold font-display text-white pr-1">
+          <span className="text-xs font-bold font-display text-white">
             Flota GPS ({devices.length})
           </span>
         </button>
@@ -130,46 +131,38 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
         {onToggleRealGps && (
           <button
             onClick={onToggleRealGps}
-            className={`p-2.5 rounded-xl border shadow-2xl backdrop-blur-md transition-all flex items-center gap-2 ${
+            className={`px-3 py-2 rounded-xl border shadow-2xl backdrop-blur-md transition-all flex items-center gap-1.5 cursor-pointer ${
               realGpsActive
-                ? 'bg-emerald-950/90 border-emerald-600 text-emerald-400 animate-pulse'
-                : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-300'
+                ? 'bg-emerald-950/95 border-emerald-500 text-emerald-300'
+                : 'bg-slate-900/95 hover:bg-slate-800 border-slate-700/80 text-slate-200'
             }`}
             title={realGpsActive ? 'Transmitiendo tu GPS real' : 'Conectar tu GPS real del navegador'}
           >
-            <MapPin className="w-4 h-4 text-emerald-400" />
+            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-xs font-semibold">
-              {realGpsActive ? 'GPS Real Conectado' : 'Mi GPS Real'}
+              {realGpsActive ? 'GPS Real Activo' : 'Mi GPS Real'}
             </span>
-          </button>
-        )}
-
-        {onOpenScanner && (
-          <button
-            onClick={onOpenScanner}
-            className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-cyan-500/50 text-cyan-300 shadow-2xl backdrop-blur-md transition-all flex items-center gap-2"
-            title="Escanear dispositivos GPS cercanos"
-          >
-            <Radar className="w-4 h-4 text-emerald-400 animate-pulse" />
-            <span className="text-xs font-semibold">Escanear GPS Cercanos</span>
           </button>
         )}
       </div>
     );
   }
 
+  const kaliPosition = devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition;
+  const activeCount = devices.filter((d) => d.lastPosition && d.status !== 'offline').length;
+
   return (
-    <aside className="pointer-events-auto relative w-80 lg:w-96 h-full flex flex-col border-r border-slate-800/80 bg-slate-900/85 backdrop-blur-md shadow-2xl shrink-0 z-20 overflow-hidden transition-all duration-300">
+    <aside className="pointer-events-auto relative w-80 lg:w-96 h-full flex flex-col border-r border-slate-800 bg-slate-900/95 backdrop-blur-md shadow-2xl shrink-0 z-20 overflow-hidden transition-all duration-300">
       
       {/* Top Header with Collapse Button & Real GPS Action */}
-      <div className="p-3 border-b border-slate-800/80 flex items-center justify-between">
+      <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between shrink-0">
         <div>
           <h3 className="font-display text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-            <span>Unidades GPS Activas</span>
+            <span>Unidades GPS Registradas</span>
             <span className="text-[10px] font-mono text-cyan-400 font-normal">({devices.length})</span>
           </h3>
           <p className="text-[11px] text-slate-400">
-            Telemetría en tiempo real AES-256-GCM
+            Telemetría Real · Cifrado AES-256-GCM
           </p>
         </div>
 
@@ -179,8 +172,8 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
               const kaliDev = devices.find((d) => d.id === 'dev-debian-patrol-04') || devices[0];
               if (kaliDev) onSelectDevice(kaliDev);
             }}
-            className="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-500/25 cursor-pointer"
-            title="Centrar en tu nodo Kali / Debian"
+            className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-500/25 cursor-pointer"
+            title="Seleccionar tu nodo Kali / Debian"
           >
             📍 Mi Kali
           </button>
@@ -194,87 +187,81 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
         </div>
       </div>
 
-      {/* Unified 3-Column KPI Strip (Identical to Local :8765 Interface) */}
-      <div className="grid grid-cols-3 gap-1.5 p-2.5 bg-slate-950/60 border-b border-slate-800 text-center">
-        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
-          <div className="text-[10px] text-slate-400">UNIDADES</div>
-          <div className="font-mono text-sm font-bold text-white">{devices.length}</div>
+      {/* Unified 3-Column KPI Strip */}
+      <div className="grid grid-cols-3 gap-1.5 px-3 py-2 bg-slate-950/60 border-b border-slate-800 text-center shrink-0">
+        <div className="py-1 px-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
+          <div className="text-[10px] text-slate-400">EN SEÑAL</div>
+          <div className="font-mono text-xs font-bold text-white tabular-nums">
+            {activeCount} / {devices.length}
+          </div>
         </div>
-        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
+        <div className="py-1 px-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
           <div className="text-[10px] text-slate-400">TRAMAS AES</div>
-          <div className="font-mono text-sm font-bold text-cyan-400">{packetsDecrypted}</div>
+          <div className="font-mono text-xs font-bold text-cyan-400 tabular-nums">{packetsDecrypted}</div>
         </div>
-        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
-          <div className="text-[10px] text-slate-400">BATERÍA KALI</div>
-          <div className="font-mono text-sm font-bold text-emerald-400">
-            {devices.find((d) => d.id === 'dev-debian-patrol-04')?.lastPosition?.battery ?? 95}%
+        <div className="py-1 px-1.5 rounded-lg bg-slate-900 border border-slate-800/80">
+          <div className="text-[10px] text-slate-400">NODO KALI</div>
+          <div className="font-mono text-xs font-bold text-emerald-400 tabular-nums">
+            {kaliPosition ? `${kaliPosition.battery}%` : 'ESPERA'}
           </div>
         </div>
       </div>
 
-      {/* Real Device Hardware GNSS Connect + Scan Nearby GPS Buttons */}
-      <div className="px-3 pt-2.5 space-y-2">
+      {/* Compact Quick Hardware & Scanner Bar */}
+      <div className="px-3 pt-2.5 pb-2 border-b border-slate-800/80 space-y-2 shrink-0">
         {onToggleRealGps && (
           <button
             onClick={onToggleRealGps}
-            className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all shadow-sm ${
+            className={`w-full py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all shadow-sm cursor-pointer ${
               realGpsActive
-                ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
-                : 'bg-slate-950/80 hover:bg-slate-800/80 border-slate-700 text-slate-200'
+                ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300'
+                : 'bg-slate-950 hover:bg-slate-800 border-slate-700 text-slate-200'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${realGpsActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
-              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{realGpsActive ? 'Transmitiendo Mi GPS Real' : 'Conectar Mi Dispositivo / GPS Real'}</span>
+            <div className="flex items-center gap-2 truncate">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${realGpsActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+              <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">{realGpsActive ? 'Transmitiendo Mi GPS Real' : 'Activar GPS de Este Dispositivo'}</span>
             </div>
-            <span className="font-mono text-[10px] text-cyan-400">
-              {realGpsActive ? 'ACTIVO' : 'CONECTAR'}
+            <span className="font-mono text-[10px] text-cyan-400 shrink-0 ml-2">
+              {realGpsActive ? 'ACTIVO' : '1-CLIC'}
             </span>
           </button>
         )}
 
-        {onOpenConnectorHub && (
-          <button
-            onClick={onOpenConnectorHub}
-            className="w-full py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-between transition-all shadow-md cursor-pointer"
-          >
-            <div className="flex items-center gap-2">
-              <Radio className="w-4 h-4 stroke-[2.5]" />
-              <span>⚡ Conectar GPS Plug & Play (1-Clic)</span>
-            </div>
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-950 text-emerald-400">
-              AUTO
-            </span>
-          </button>
-        )}
+        <div className="grid grid-cols-2 gap-1.5">
+          {onOpenConnectorHub && (
+            <button
+              onClick={onOpenConnectorHub}
+              className="py-1.5 px-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer truncate"
+            >
+              <Radio className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+              <span className="truncate">⚡ Plug & Play</span>
+            </button>
+          )}
 
-        {onOpenScanner && (
-          <button
-            onClick={onOpenScanner}
-            className="w-full py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between transition-all shadow-sm cursor-pointer"
-          >
-            <div className="flex items-center gap-2">
-              <Radar className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '4s' }} />
-              <span>Escanear GPS Cercanos (Radar 360°)</span>
-            </div>
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-              RADAR
-            </span>
-          </button>
-        )}
+          {onOpenScanner && (
+            <button
+              onClick={onOpenScanner}
+              className="py-1.5 px-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer truncate"
+            >
+              <Radar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">📡 Radar 360°</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search and Filters Header */}
-      <div className="p-3 border-b border-slate-800/80 space-y-2.5">
+      <div className="px-3 py-2 border-b border-slate-800/80 space-y-2 shrink-0">
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por nombre, IMEI o modelo..."
+            placeholder="Buscar unidad, IMEI o protocolo..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-950/90 border border-slate-800 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-950/90 border border-slate-800 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
           />
         </div>
 
@@ -282,7 +269,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
         <div className="flex items-center gap-1 p-0.5 bg-slate-950/90 rounded-lg border border-slate-800/80">
           <button
             onClick={() => setStatusFilter('all')}
-            className={`flex-1 py-1 text-xs font-medium rounded transition-colors ${
+            className={`flex-1 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer ${
               statusFilter === 'all'
                 ? 'bg-slate-800 text-cyan-400 shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
@@ -292,7 +279,7 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
           </button>
           <button
             onClick={() => setStatusFilter('moving')}
-            className={`flex-1 py-1 text-xs font-medium rounded transition-colors ${
+            className={`flex-1 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer ${
               statusFilter === 'moving'
                 ? 'bg-slate-800 text-emerald-400 shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
@@ -302,23 +289,23 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
           </button>
           <button
             onClick={() => setStatusFilter('idle')}
-            className={`flex-1 py-1 text-xs font-medium rounded transition-colors ${
+            className={`flex-1 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer ${
               statusFilter === 'idle'
                 ? 'bg-slate-800 text-amber-400 shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Ralentí
+            Fijos
           </button>
           <button
-            onClick={() => setStatusFilter('stopped')}
-            className={`flex-1 py-1 text-xs font-medium rounded transition-colors ${
-              statusFilter === 'stopped'
+            onClick={() => setStatusFilter('offline')}
+            className={`flex-1 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer ${
+              statusFilter === 'offline'
                 ? 'bg-slate-800 text-slate-200 shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Parados
+            En Espera
           </button>
         </div>
       </div>
@@ -367,14 +354,22 @@ export const DeviceSidebar: React.FC<DeviceSidebarProps> = ({
                   </div>
 
                   {/* Speed / Heading Tag */}
-                  <div className="text-right">
-                    <span className="font-mono text-xs font-semibold tabular-nums text-slate-200">
-                      {Math.round(speed)} km/h
-                    </span>
-                    <div className="flex items-center justify-end gap-1 text-[11px] text-slate-400">
-                      {getBatteryIcon(lp?.battery, lp?.ignition)}
-                      <span className="font-mono tabular-nums">{lp?.battery || 100}%</span>
-                    </div>
+                  <div className="text-right shrink-0">
+                    {lp ? (
+                      <>
+                        <span className="font-mono text-xs font-semibold tabular-nums text-slate-200">
+                          {Math.round(speed)} km/h
+                        </span>
+                        <div className="flex items-center justify-end gap-1 text-[11px] text-slate-400">
+                          {getBatteryIcon(lp.battery, lp.ignition)}
+                          <span className="font-mono tabular-nums">{lp.battery}%</span>
+                        </div>
+                      </>
+                    ) : (
+                      <span className="inline-block font-mono text-[10px] text-amber-300 bg-amber-950/50 border border-amber-800/50 px-1.5 py-0.5 rounded">
+                        SIN SEÑAL AÚN
+                      </span>
+                    )}
                   </div>
                 </div>
 

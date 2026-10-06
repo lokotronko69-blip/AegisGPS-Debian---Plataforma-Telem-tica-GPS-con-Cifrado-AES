@@ -33,6 +33,8 @@ interface MapViewProps {
   realGpsActive?: boolean;
   realLocationCoords?: { lat: number; lng: number; accuracy?: number } | null;
   onOpenScanner?: () => void;
+  onOpenConnectorHub?: () => void;
+  onOpenInjector?: () => void;
 }
 
 export type MapLayerType = 'satellite' | 'osm' | 'dark' | 'voyager';
@@ -49,6 +51,8 @@ export const MapView: React.FC<MapViewProps> = ({
   realGpsActive,
   realLocationCoords,
   onOpenScanner,
+  onOpenConnectorHub,
+  onOpenInjector,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -558,67 +562,67 @@ export const MapView: React.FC<MapViewProps> = ({
         </button>
       </div>
 
-      {/* Selected Vehicle Full Telemetry Bar (Bottom Floating HUD - Identical to Local :8765) */}
-      {selectedDevice && selectedDevice.lastPosition && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-4xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+      {/* Selected Vehicle Full Telemetry Bar (Bottom Floating HUD inside Map Viewport) */}
+      {selectedDevice && selectedDevice.lastPosition ? (
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-4xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-500/50"
+              className="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-500/50 shrink-0"
               style={{ backgroundColor: selectedDevice.color }}
             />
-            <div>
-              <div className="font-display text-sm font-bold text-white flex items-center gap-2">
-                <span>{selectedDevice.name}</span>
-                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-700/60">
+            <div className="min-w-0">
+              <div className="font-display text-sm font-bold text-white flex items-center gap-2 truncate">
+                <span className="truncate">{selectedDevice.name}</span>
+                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-700/60 shrink-0">
                   AES-256-GCM
                 </span>
               </div>
-              <div className="font-mono text-[11px] text-cyan-400">
+              <div className="font-mono text-[11px] text-cyan-400 tabular-nums">
                 Lat: {selectedDevice.lastPosition.latitude.toFixed(6)} · Lon: {selectedDevice.lastPosition.longitude.toFixed(6)}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 text-center flex-1 max-w-2xl">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center flex-1 max-w-2xl">
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">VELOCIDAD</div>
-              <div className="font-mono text-xs font-bold text-cyan-400">
+              <div className="font-mono text-xs font-bold text-cyan-400 tabular-nums">
                 {Math.round(selectedDevice.lastPosition.speed)} km/h
               </div>
             </div>
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">RUMBO</div>
-              <div className="font-mono text-xs font-bold text-slate-200">
+              <div className="font-mono text-xs font-bold text-slate-200 tabular-nums">
                 {selectedDevice.lastPosition.heading}°
               </div>
             </div>
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">ALTITUD</div>
-              <div className="font-mono text-xs font-bold text-slate-200">
+              <div className="font-mono text-xs font-bold text-slate-200 tabular-nums">
                 {Math.round(selectedDevice.lastPosition.altitude || 450)} m
               </div>
             </div>
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">SATÉLITES</div>
-              <div className="font-mono text-xs font-bold text-emerald-400">
+              <div className="font-mono text-xs font-bold text-emerald-400 tabular-nums">
                 {selectedDevice.lastPosition.satellites || 16} GNSS
               </div>
             </div>
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">BATERÍA</div>
-              <div className="font-mono text-xs font-bold text-emerald-400">
+              <div className="font-mono text-xs font-bold text-emerald-400 tabular-nums">
                 {selectedDevice.lastPosition.battery}%
               </div>
             </div>
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">ESTADO</div>
               <div className="font-mono text-[10px] font-bold text-emerald-300">
-                VERIFICADO
+                EN SEÑAL
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {onOpenScanner && (
               <button
                 onClick={onOpenScanner}
@@ -645,11 +649,56 @@ export const MapView: React.FC<MapViewProps> = ({
             </button>
           </div>
         </div>
-      )}
+      ) : selectedDevice ? (
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-3xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-3 h-3 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <div className="min-w-0">
+              <div className="font-display text-sm font-bold text-white flex items-center gap-2 truncate">
+                <span className="truncate">{selectedDevice.name}</span>
+                <span className="text-[10px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-700/60 shrink-0">
+                  ESPERANDO TRAMA REAL
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 truncate">
+                {selectedDevice.model} · Protocolo <span className="font-mono text-cyan-300">{selectedDevice.protocol}</span> listo para recibir coordenadas reales
+              </div>
+            </div>
+          </div>
 
-      {/* Real-time Coordinate & Cursor Status (Bottom Left) */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {onToggleRealGps && (
+              <button
+                onClick={onToggleRealGps}
+                className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{realGpsActive ? 'GPS Real Activo' : '📍 Activar Mi GPS Real'}</span>
+              </button>
+            )}
+            {onOpenConnectorHub && (
+              <button
+                onClick={onOpenConnectorHub}
+                className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                ⚡ Conectar Plug & Play
+              </button>
+            )}
+            {onOpenInjector && (
+              <button
+                onClick={onOpenInjector}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                📡 Enviar Trama
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Real-time Coordinate & Cursor Status (Bottom Right - Never collides with bottom-left Leaflet scale) */}
       {mouseCoords && (
-        <div className="hidden sm:flex absolute bottom-2 left-28 z-10 px-2.5 py-1 bg-slate-950/85 backdrop-blur border border-slate-800 rounded-lg text-[10px] font-mono tabular-nums text-slate-300 shadow pointer-events-none">
+        <div className="hidden sm:flex absolute bottom-1 right-3 z-10 px-2.5 py-0.5 bg-slate-950/85 backdrop-blur border border-slate-800 rounded-md text-[10px] font-mono tabular-nums text-slate-300 shadow pointer-events-none">
           <span>GNSS: {formatCoordinates(mouseCoords.lat, mouseCoords.lng)}</span>
         </div>
       )}
