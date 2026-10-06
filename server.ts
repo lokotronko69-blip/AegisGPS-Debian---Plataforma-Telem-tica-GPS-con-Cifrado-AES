@@ -383,6 +383,26 @@ function ingestPosition(pos: GpsPosition, protocolSource = 'HTTPS'): void {
 
 // --- GPS Protocols Parsers ---
 
+// Helper: Convert NMEA ddmm.mmmm / dddmm.mmmm coordinate to exact decimal degrees (7 decimal places = ~1.1cm precision)
+function nmeaCoordToDecimal(raw: string, dir: string): number | null {
+  if (!raw || !dir) return null;
+  const trimmed = raw.trim();
+  const dotIdx = trimmed.indexOf('.');
+  if (dotIdx < 2) return null;
+
+  const degPart = trimmed.substring(0, dotIdx - 2);
+  const minPart = trimmed.substring(dotIdx - 2);
+  const degrees = parseInt(degPart, 10) || 0;
+  const minutes = parseFloat(minPart);
+  if (isNaN(minutes)) return null;
+
+  let decimal = degrees + minutes / 60.0;
+  if (dir.toUpperCase() === 'S' || dir.toUpperCase() === 'W') {
+    decimal = -decimal;
+  }
+  return parseFloat(decimal.toFixed(7));
+}
+
 // 1. NMEA 0183 ($GPRMC, $GNRMC, $GPGGA, $GNGGA parser)
 function parseNmeaGprmc(rawInput: string): Partial<GpsPosition> | null {
   const lines = rawInput
@@ -400,63 +420,40 @@ function parseNmeaGprmc(rawInput: string): Partial<GpsPosition> | null {
     if (talker.endsWith('RMC') && parts.length >= 10) {
       const status = parts[2];
       if (status !== 'A') continue;
-      const rawLat = parts[3];
-      const latDir = parts[4];
-      const rawLng = parts[5];
-      const lngDir = parts[6];
+      const lat = nmeaCoordToDecimal(parts[3], parts[4]);
+      const lng = nmeaCoordToDecimal(parts[5], parts[6]);
       const speedKnots = parseFloat(parts[7]) || 0;
       const heading = parseFloat(parts[8]) || 0;
-      if (!rawLat || !rawLng) continue;
 
-      const latDeg = parseInt(rawLat.substring(0, 2), 10);
-      const latMin = parseFloat(rawLat.substring(2));
-      let lat = latDeg + latMin / 60;
-      if (latDir === 'S') lat = -lat;
-
-      const lngDeg = parseInt(rawLng.substring(0, 3), 10);
-      const lngMin = parseFloat(rawLng.substring(3));
-      let lng = lngDeg + lngMin / 60;
-      if (lngDir === 'W') lng = -lng;
-
-      if (!isNaN(lat) && !isNaN(lng)) {
+      if (lat !== null && lng !== null) {
         result = {
           ...(result || {}),
-          latitude: parseFloat(lat.toFixed(6)),
-          longitude: parseFloat(lng.toFixed(6)),
-          speed: parseFloat((speedKnots * 1.852).toFixed(1)),
+          latitude: lat,
+          longitude: lng,
+          speed: parseFloat((speedKnots * 1.852).toFixed(2)),
           heading: Math.round(heading),
         };
       }
     } else if (talker.endsWith('GGA') && parts.length >= 10) {
       const fixQual = parseInt(parts[6], 10) || 0;
       if (fixQual === 0) continue;
-      const rawLat = parts[2];
-      const latDir = parts[3];
-      const rawLng = parts[4];
-      const lngDir = parts[5];
+      const lat = nmeaCoordToDecimal(parts[2], parts[3]);
+      const lng = nmeaCoordToDecimal(parts[4], parts[5]);
       const sats = parseInt(parts[7], 10) || 12;
-      const hdop = parseFloat(parts[8]) || 0.8;
+      const hdop = parseFloat(parts[8]) || 0.6;
       const alt = parseFloat(parts[9]) || 0;
-      if (!rawLat || !rawLng) continue;
 
-      const latDeg = parseInt(rawLat.substring(0, 2), 10);
-      const latMin = parseFloat(rawLat.substring(2));
-      let lat = latDeg + latMin / 60;
-      if (latDir === 'S') lat = -lat;
-
-      const lngDeg = parseInt(rawLng.substring(0, 3), 10);
-      const lngMin = parseFloat(rawLng.substring(3));
-      let lng = lngDeg + lngMin / 60;
-      if (lngDir === 'W') lng = -lng;
-
-      if (!isNaN(lat) && !isNaN(lng)) {
+      if (lat !== null && lng !== null) {
+        const cleanHdop = parseFloat(hdop.toFixed(2));
         result = {
           ...(result || {}),
-          latitude: parseFloat(lat.toFixed(6)),
-          longitude: parseFloat(lng.toFixed(6)),
+          latitude: lat,
+          longitude: lng,
           satellites: sats,
-          hdop,
-          altitude: alt,
+          hdop: cleanHdop,
+          accuracy: parseFloat(Math.max(0.8, cleanHdop * 2.5).toFixed(1)),
+          source: 'NMEA-0183-GNSS',
+          altitude: parseFloat(alt.toFixed(1)),
         };
       }
     }
@@ -475,16 +472,6 @@ function parseTeltonikaCodec8(hex: string): Partial<GpsPosition> | null {
     const codecId = parseInt(clean.substring(16, 18), 16);
     if (codecId !== 8) return null;
 
-    // Record 1 starts at byte 10 (offset 20 in hex)
-    // Timestamp: 8 bytes (offset 20 to 36)
-    // Priority: 1 byte (offset 36 to 38)
-    // Longitude: 4 bytes (offset 38 to 46, signed int / 10000000)
-    // Latitude: 4 bytes (offset 46 to 54, signed int / 10000000)
-    // Altitude: 2 bytes (offset 54 to 58)
-    // Angle: 2 bytes (offset 58 to 62)
-    // Satellites: 1 byte (offset 62 to 64)
-    // Speed: 2 bytes (offset 64 to 68)
-
     const lngRaw = parseInt(clean.substring(38, 46), 16);
     const latRaw = parseInt(clean.substring(46, 54), 16);
     // Convert two's complement 32-bit if negative
@@ -499,11 +486,14 @@ function parseTeltonikaCodec8(hex: string): Partial<GpsPosition> | null {
     const speed = parseInt(clean.substring(64, 68), 16);
 
     return {
-      latitude: parseFloat(lat.toFixed(6)),
-      longitude: parseFloat(lng.toFixed(6)),
+      latitude: parseFloat(lat.toFixed(7)),
+      longitude: parseFloat(lng.toFixed(7)),
       altitude: alt,
       heading: angle,
       satellites: sats,
+      hdop: sats >= 12 ? 0.6 : 1.0,
+      accuracy: sats >= 12 ? 1.5 : 3.5,
+      source: 'TELTONIKA-CODEC8',
       speed: speed,
     };
   } catch {
@@ -703,16 +693,26 @@ app.post('/api/gps/encrypted-aes', (req: Request, res: Response) => {
   if (cryptoLogs.length > 100) cryptoLogs.pop();
   broadcastSse('crypto_log', logEntry);
 
+  const rawLat = Number(parsed.latitude ?? parsed.lat);
+  const rawLon = Number(parsed.longitude ?? parsed.lng ?? parsed.lon);
+  const parsedHdop = Number(parsed.hdop ?? 0.6);
+  const parsedAccuracy =
+    parsed.accuracy !== undefined
+      ? Number(parsed.accuracy)
+      : parseFloat(Math.max(0.8, parsedHdop * 2.5).toFixed(1));
+
   const pos: GpsPosition = {
     id: `pos-${device.id}-${Date.now()}`,
     deviceId: device.id,
-    latitude: Number(parsed.latitude ?? parsed.lat),
-    longitude: Number(parsed.longitude ?? parsed.lng ?? parsed.lon),
+    latitude: parseFloat(rawLat.toFixed(7)),
+    longitude: parseFloat(rawLon.toFixed(7)),
     altitude: Number(parsed.altitude ?? parsed.alt ?? 0),
     speed: Number(parsed.speed ?? 0),
     heading: Number(parsed.heading ?? parsed.bearing ?? 0),
-    satellites: Number(parsed.satellites ?? parsed.sats ?? 12),
-    hdop: Number(parsed.hdop ?? 1.0),
+    satellites: Number(parsed.satellites ?? parsed.sats ?? 16),
+    hdop: parsedHdop,
+    accuracy: parsedAccuracy,
+    source: (parsed.source as string) || 'AES-256-GNSS',
     battery: Number(parsed.battery ?? 100),
     ignition: Boolean(parsed.ignition ?? true),
     tamper: Boolean(parsed.tamper ?? false),
@@ -792,13 +792,15 @@ const handleOsmAnd = (req: Request, res: Response) => {
   const pos: GpsPosition = {
     id: `pos-osmand-${Date.now()}`,
     deviceId: device.id,
-    latitude: lat,
-    longitude: lon,
+    latitude: parseFloat(lat.toFixed(7)),
+    longitude: parseFloat(lon.toFixed(7)),
     altitude: Math.round(altitude),
     speed: Math.round(speedKmh * 10) / 10,
     heading: heading % 360,
-    satellites: query.hdop ? Math.max(8, Math.round(15 / Math.max(0.5, parseFloat(query.hdop)))) : 14,
-    hdop: query.hdop ? parseFloat(query.hdop) : 1.0,
+    satellites: query.hdop ? Math.max(8, Math.round(15 / Math.max(0.5, parseFloat(query.hdop)))) : 16,
+    hdop: query.hdop ? parseFloat(query.hdop) : 0.6,
+    accuracy: query.accuracy ? parseFloat(query.accuracy) : (query.hdop ? parseFloat(query.hdop) * 2.5 : 2.0),
+    source: 'OSMAND-GNSS',
     battery: Math.min(100, Math.max(0, Math.round(battery))),
     ignition: speedKmh > 2,
     tamper: false,

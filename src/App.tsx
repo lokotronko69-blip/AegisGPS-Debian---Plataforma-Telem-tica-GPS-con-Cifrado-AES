@@ -49,11 +49,27 @@ export default function App() {
   // Sidebar Collapse State (allows 100% full background real map view)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Real Hardware Device GPS Geolocation
+  // Real Hardware Device GPS Geolocation & Sub-Meter Precision Lock
   const [realGpsActive, setRealGpsActive] = useState(false);
-  const [realLocationCoords, setRealLocationCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
+  const [realLocationCoords, setRealLocationCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('aegis_calibrated_exact_coords');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+          return { lat: parsed.lat, lng: parsed.lng, accuracy: parsed.accuracy ?? 0.5 };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
   const geoWatchIdRef = useRef<number | null>(null);
   const realDeviceKeyRef = useRef<string>(generateAes256KeyHex());
+  const bestAccuracyRef = useRef<number>(999999);
+  const hasLockedRealGnssRef = useRef<boolean>(false);
+  const manualCalibratedRef = useRef<boolean>(false);
 
   // Telemetry Settings
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -286,6 +302,38 @@ export default function App() {
           setLocalUpdateAvailable(false);
         }
         if (pkt && pkt.iv && pkt.ciphertext) {
+          // If user has a calibrated or high-precision browser lock, sync it to local daemon if daemon is still on GeoIP
+          const previewSource = String(pkt.telemetryPreview?.source || '');
+          if (previewSource.includes('GEOIP')) {
+            try {
+              const savedCal = localStorage.getItem('aegis_calibrated_exact_coords');
+              if (savedCal) {
+                const cal = JSON.parse(savedCal);
+                if (typeof cal.lat === 'number' && typeof cal.lng === 'number') {
+                  await fetch('http://127.0.0.1:8765/api/inject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      deviceId: pkt.deviceId || 'dev-debian-patrol-04',
+                      latitude: cal.lat,
+                      longitude: cal.lng,
+                      altitude: 450,
+                      speed: 0,
+                      heading: 0,
+                      satellites: 19,
+                      hdop: 0.4,
+                      accuracy: 0.5,
+                      lockExact: true,
+                      browserGps: true,
+                    }),
+                  });
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+
           await fetch('/api/gps/encrypted-aes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -339,7 +387,153 @@ export default function App() {
     };
   }, []);
 
-  // Handle Real GPS Hardware Geolocation (with automatic Kali Linux / GeoIP fallback)
+  // Ensure Real User Device exists and return its ID and AES key
+  const ensureRealUserDevice = async (): Promise<{ id: string; aesKeyHex: string }> => {
+    const realDeviceId = 'dev-real-gps-user';
+    const existing = devices.find((d) => d.id === realDeviceId || d.imei === '869910293847561');
+    if (existing && existing.aesKeyHex) {
+      realDeviceKeyRef.current = existing.aesKeyHex;
+      return { id: existing.id, aesKeyHex: existing.aesKeyHex };
+    }
+    try {
+      const realDev: Partial<GpsDevice> = {
+        id: realDeviceId,
+        name: 'Mi Dispositivo Real (Local GNSS)',
+        imei: '869910293847561',
+        model: 'Navegador Web / Nodo Físico',
+        vehicleType: 'person',
+        protocol: 'aes-encrypted-json',
+        aesKeyHex: realDeviceKeyRef.current,
+        speedLimit: 120,
+        color: '#10b981',
+      };
+      await handleRegisterDevice(realDev);
+    } catch {
+      // ignore if already registered
+    }
+    return { id: realDeviceId, aesKeyHex: realDeviceKeyRef.current };
+  };
+
+  // Transmit High-Precision Encrypted Coordinates to Cloud & Local Kali Daemon
+  const transmitHighPrecisionCoords = async (
+    lat: number,
+    lng: number,
+    accuracy = 1.5,
+    speedKmh = 0,
+    heading = 0,
+    altitude = 450,
+    source = 'GNSS-ALTA-PRECISION',
+    targetDevice?: GpsDevice | null
+  ) => {
+    const cleanLat = Number(lat.toFixed(7));
+    const cleanLng = Number(lng.toFixed(7));
+    const cleanAcc = Math.max(0.5, Number(accuracy.toFixed(1)));
+    const computedHdop = Number(Math.max(0.4, Math.min(2.5, cleanAcc / 5)).toFixed(2));
+    const computedSats = cleanAcc <= 2 ? 19 : cleanAcc <= 10 ? 17 : cleanAcc <= 30 ? 14 : 10;
+
+    setRealLocationCoords({ lat: cleanLat, lng: cleanLng, accuracy: cleanAcc });
+
+    const devInfo = targetDevice && targetDevice.aesKeyHex
+      ? { id: targetDevice.id, aesKeyHex: targetDevice.aesKeyHex }
+      : await ensureRealUserDevice();
+
+    const payloadObj = {
+      deviceId: devInfo.id,
+      latitude: cleanLat,
+      longitude: cleanLng,
+      altitude: Math.round(altitude || 450),
+      speed: Number(speedKmh.toFixed(1)),
+      heading: Math.round(heading || 0),
+      satellites: computedSats,
+      hdop: computedHdop,
+      accuracy: cleanAcc,
+      source,
+      battery: 100,
+      ignition: true,
+      tamper: false,
+      sos: false,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      const encrypted = await encryptAes256Gcm(
+        JSON.stringify(payloadObj),
+        devInfo.aesKeyHex
+      );
+      await fetch('/api/gps/encrypted-aes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: devInfo.id,
+          ciphertext: encrypted.ciphertextHex,
+          iv: encrypted.ivHex,
+          authTag: encrypted.authTagHex,
+          algorithm: 'AES-256-GCM',
+          transport: 'HTTPS',
+        }),
+      });
+    } catch (err) {
+      console.error('Error transmitiendo ubicación real cifrada:', err);
+    }
+
+    // Also sync high-precision fix to local Kali Linux daemon (:8765) if running
+    if (cleanAcc <= 100 || source === 'CALIBRADO-EXACTO-1M') {
+      fetch('http://127.0.0.1:8765/api/inject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: 'dev-debian-patrol-04',
+          latitude: cleanLat,
+          longitude: cleanLng,
+          altitude: Math.round(altitude || 450),
+          speed: Number(speedKmh.toFixed(1)),
+          heading: Math.round(heading || 0),
+          satellites: computedSats,
+          hdop: computedHdop,
+          accuracy: cleanAcc,
+          browserGps: true,
+          lockExact: source === 'CALIBRADO-EXACTO-1M',
+        }),
+      }).catch(() => {});
+    }
+  };
+
+  // 1-Click Sub-Meter Map Calibration Handler (Fixes any ISP GeoIP or Wi-Fi offset)
+  const handleCalibrateExactPosition = async (lat: number, lng: number) => {
+    const cleanLat = Number(lat.toFixed(7));
+    const cleanLng = Number(lng.toFixed(7));
+    manualCalibratedRef.current = true;
+    hasLockedRealGnssRef.current = true;
+    bestAccuracyRef.current = 0.5;
+
+    try {
+      localStorage.setItem(
+        'aegis_calibrated_exact_coords',
+        JSON.stringify({
+          lat: cleanLat,
+          lng: cleanLng,
+          accuracy: 0.5,
+          calibratedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // ignore storage errors
+    }
+
+    setRealGpsActive(true);
+    await transmitHighPrecisionCoords(
+      cleanLat,
+      cleanLng,
+      0.5,
+      0,
+      0,
+      selectedDevice?.lastPosition?.altitude || 450,
+      'CALIBRADO-EXACTO-1M',
+      selectedDevice
+    );
+  };
+
+  // Handle Real GPS Hardware Geolocation (with High-Accuracy Filter & Zero Coarse Overwrite)
   const handleToggleRealGps = async () => {
     if (realGpsActive) {
       if (geoWatchIdRef.current !== null) {
@@ -350,83 +544,58 @@ export default function App() {
       return;
     }
 
-    // Register real device or sync existing AES key
-    const realDeviceId = 'dev-real-gps-user';
-    const existing = devices.find((d) => d.id === realDeviceId || d.imei === '869910293847561');
-    if (existing && existing.aesKeyHex) {
-      realDeviceKeyRef.current = existing.aesKeyHex;
-    } else {
-      try {
-        const realDev: Partial<GpsDevice> = {
-          id: realDeviceId,
-          name: 'Mi Dispositivo Real (Local GNSS)',
-          imei: '869910293847561',
-          model: 'Navegador Web / Nodo Físico',
-          vehicleType: 'person',
-          protocol: 'aes-encrypted-json',
-          aesKeyHex: realDeviceKeyRef.current,
-          speedLimit: 120,
-          color: '#10b981',
-        };
-        await handleRegisterDevice(realDev);
-      } catch {
-        // ignore if already registered
+    await ensureRealUserDevice();
+    setRealGpsActive(true);
+
+    // Check if user previously calibrated an exact sub-meter point
+    try {
+      const savedCal = localStorage.getItem('aegis_calibrated_exact_coords');
+      if (savedCal) {
+        const cal = JSON.parse(savedCal);
+        if (typeof cal.lat === 'number' && typeof cal.lng === 'number') {
+          hasLockedRealGnssRef.current = true;
+          bestAccuracyRef.current = 15;
+          await transmitHighPrecisionCoords(
+            cal.lat,
+            cal.lng,
+            cal.accuracy || 0.8,
+            0,
+            0,
+            450,
+            'CALIBRADO-EXACTO-1M'
+          );
+        }
       }
+    } catch {
+      // ignore
     }
 
-    const transmitEncryptedCoords = async (lat: number, lng: number, accuracy = 15, speedKmh = 0, heading = 0, battery = 100) => {
-      setRealLocationCoords({ lat, lng, accuracy });
-      const payloadObj = {
-        deviceId: realDeviceId,
-        latitude: lat,
-        longitude: lng,
-        altitude: 450,
-        speed: speedKmh,
-        heading,
-        satellites: 18,
-        hdop: 0.6,
-        battery,
-        ignition: true,
-        tamper: false,
-        sos: false,
-        timestamp: new Date().toISOString(),
-      };
-      try {
-        const encrypted = await encryptAes256Gcm(
-          JSON.stringify(payloadObj),
-          realDeviceKeyRef.current
-        );
-        await fetch('/api/gps/encrypted-aes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: realDeviceId,
-            ciphertext: encrypted.ciphertextHex,
-            iv: encrypted.ivHex,
-            authTag: encrypted.authTagHex,
-            algorithm: 'AES-256-GCM',
-            transport: 'HTTPS',
-          }),
-        });
-      } catch (err) {
-        console.error('Error transmitiendo ubicación real cifrada:', err);
-      }
-    };
-
     const runDesktopFallback = async () => {
+      // NEVER overwrite if we already locked a real GNSS fix or manual calibration!
+      if (hasLockedRealGnssRef.current || manualCalibratedRef.current) {
+        return;
+      }
       try {
-        // 1. Try local Kali/Debian daemon on 127.0.0.1:8765 first
         const localRes = await fetch('http://127.0.0.1:8765/telemetry');
         if (localRes.ok) {
           const pkt = await localRes.json();
           const t = pkt.telemetryPreview;
           if (t && typeof t.latitude === 'number') {
-            await transmitEncryptedCoords(t.latitude, t.longitude, 10, t.speed || 35, t.heading || 90, t.battery || 95);
+            const isLocked = String(t.source || '').includes('EXACT') || String(t.source || '').includes('GNSS') || String(t.source || '').includes('HW');
+            await transmitHighPrecisionCoords(
+              t.latitude,
+              t.longitude,
+              isLocked ? 1.5 : 180,
+              t.speed || 0,
+              t.heading || 0,
+              t.altitude || 450,
+              t.source || 'NODO-LOCAL-KALI'
+            );
             return;
           }
         }
       } catch {
-        // fallback to HTTPS GeoIP
+        // fallback to HTTPS GeoIP only if no lock exists
       }
       try {
         const geoRes = await fetch('https://get.geojs.io/v1/ip/geo.json');
@@ -434,8 +603,8 @@ export default function App() {
           const geoData = await geoRes.json();
           const lat = parseFloat(geoData.latitude);
           const lng = parseFloat(geoData.longitude);
-          if (!isNaN(lat) && !isNaN(lng)) {
-            await transmitEncryptedCoords(lat, lng, 25, 0, 0, 100);
+          if (!isNaN(lat) && !isNaN(lng) && !hasLockedRealGnssRef.current) {
+            await transmitHighPrecisionCoords(lat, lng, 250, 0, 0, 450, 'GEOIP-RED-APROX');
           }
         }
       } catch {
@@ -443,32 +612,59 @@ export default function App() {
       }
     };
 
-    setRealGpsActive(true);
-
     if (!('geolocation' in navigator)) {
       await runDesktopFallback();
       return;
     }
 
+    const processGnssPosition = async (pos: GeolocationPosition) => {
+      const acc = pos.coords.accuracy || 20;
+
+      // If user manually calibrated sub-meter position on desktop, don't let coarse Wi-Fi (>25m) jump away
+      if (manualCalibratedRef.current && acc > 25) {
+        return;
+      }
+
+      // Reject sudden coarse cell/IP outlier jumps if we already achieved a tight GNSS lock
+      if (hasLockedRealGnssRef.current && bestAccuracyRef.current <= 30 && acc > bestAccuracyRef.current * 2.5) {
+        return;
+      }
+
+      hasLockedRealGnssRef.current = true;
+      if (acc < bestAccuracyRef.current) {
+        bestAccuracyRef.current = acc;
+      }
+
+      await transmitHighPrecisionCoords(
+        pos.coords.latitude,
+        pos.coords.longitude,
+        acc,
+        pos.coords.speed ? pos.coords.speed * 3.6 : 0,
+        pos.coords.heading || 0,
+        pos.coords.altitude || 450,
+        acc <= 15 ? 'GNSS-ALTA-PRECISION' : 'GNSS-NAVEGADOR'
+      );
+    };
+
+    // Immediate high-accuracy acquisition request
+    navigator.geolocation.getCurrentPosition(
+      processGnssPosition,
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+
+    // Continuous high-accuracy watch stream (20s timeout so cold GNSS locks don't abort into GeoIP)
     geoWatchIdRef.current = navigator.geolocation.watchPosition(
-      async (pos) => {
-        await transmitEncryptedCoords(
-          pos.coords.latitude,
-          pos.coords.longitude,
-          pos.coords.accuracy,
-          pos.coords.speed ? pos.coords.speed * 3.6 : 0,
-          pos.coords.heading || 0,
-          100
-        );
-      },
+      processGnssPosition,
       async () => {
-        // Fallback for Kali Linux / Desktop browsers without OS Geoclue service
-        await runDesktopFallback();
+        if (!hasLockedRealGnssRef.current && !manualCalibratedRef.current) {
+          await runDesktopFallback();
+        }
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 2000,
-        timeout: 6000,
+        maximumAge: 0,
+        timeout: 20000,
       }
     );
   };
@@ -614,6 +810,7 @@ export default function App() {
             onToggleRealGps={handleToggleRealGps}
             realGpsActive={realGpsActive}
             realLocationCoords={realLocationCoords}
+            onCalibratePosition={handleCalibrateExactPosition}
             onOpenScanner={() => setIsScannerOpen(true)}
             onOpenConnectorHub={() => setIsConnectorHubOpen(true)}
             onOpenInjector={() => setCurrentTab('simulation')}

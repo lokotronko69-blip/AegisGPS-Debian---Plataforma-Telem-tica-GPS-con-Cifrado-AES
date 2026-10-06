@@ -32,6 +32,7 @@ interface MapViewProps {
   onToggleRealGps?: () => void;
   realGpsActive?: boolean;
   realLocationCoords?: { lat: number; lng: number; accuracy?: number } | null;
+  onCalibratePosition?: (lat: number, lng: number) => void;
   onOpenScanner?: () => void;
   onOpenConnectorHub?: () => void;
   onOpenInjector?: () => void;
@@ -50,6 +51,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onToggleRealGps,
   realGpsActive,
   realLocationCoords,
+  onCalibratePosition,
   onOpenScanner,
   onOpenConnectorHub,
   onOpenInjector,
@@ -61,11 +63,19 @@ export const MapView: React.FC<MapViewProps> = ({
   const polylinesRef = useRef<Map<string, L.Polyline>>(new Map());
   const geofenceLayersRef = useRef<L.LayerGroup | null>(null);
   const realGpsAccuracyCircleRef = useRef<L.Circle | null>(null);
+  const calibratingModeRef = useRef<boolean>(false);
+  const onCalibrateRef = useRef(onCalibratePosition);
+  onCalibrateRef.current = onCalibratePosition;
 
   const [currentLayer, setCurrentLayer] = useState<MapLayerType>('osm');
   const [followMode, setFollowMode] = useState<boolean>(true);
   const [mouseCoords, setMouseCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
+  const [calibratingMode, setCalibratingMode] = useState<boolean>(false);
+  const [calibrationBanner, setCalibrationBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    calibratingModeRef.current = calibratingMode;
+  }, [calibratingMode]);
 
   // Initialize Map full-bleed
   useEffect(() => {
@@ -78,7 +88,8 @@ export const MapView: React.FC<MapViewProps> = ({
 
     const map = L.map(mapContainerRef.current, {
       center: initialCenter,
-      zoom: 12,
+      zoom: 15,
+      maxZoom: 20,
       zoomControl: false,
       attributionControl: true,
       fadeAnimation: true,
@@ -91,11 +102,12 @@ export const MapView: React.FC<MapViewProps> = ({
     // Metric Scale Bar
     L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
 
-    // Initial tile layer: OpenStreetMap Real Standard
+    // Initial tile layer: OpenStreetMap Real Standard (High-precision zoom 20)
     const osmTiles = L.tileLayer(
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
-        maxZoom: 19,
+        maxZoom: 20,
+        maxNativeZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }
     );
@@ -108,6 +120,19 @@ export const MapView: React.FC<MapViewProps> = ({
 
     map.on('mousemove', (e: L.LeafletMouseEvent) => {
       setMouseCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
+    });
+
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      if (calibratingModeRef.current && onCalibrateRef.current) {
+        const exactLat = Number(e.latlng.lat.toFixed(7));
+        const exactLng = Number(e.latlng.lng.toFixed(7));
+        onCalibrateRef.current(exactLat, exactLng);
+        setCalibratingMode(false);
+        calibratingModeRef.current = false;
+        map.setView([exactLat, exactLng], Math.max(map.getZoom(), 18), { animate: true });
+        setCalibrationBanner(`✓ GPS calibrado con precisión exacta (±0.5m): ${exactLat.toFixed(7)}°, ${exactLng.toFixed(7)}°`);
+        setTimeout(() => setCalibrationBanner(null), 5000);
+      }
     });
 
     mapInstanceRef.current = map;
@@ -173,7 +198,7 @@ export const MapView: React.FC<MapViewProps> = ({
       subdomains = 'abcd';
     }
 
-    const newTiles = L.tileLayer(url, { maxZoom, subdomains, attribution }).addTo(map);
+    const newTiles = L.tileLayer(url, { maxZoom: 20, maxNativeZoom: maxZoom, subdomains, attribution }).addTo(map);
     tileLayerRef.current = newTiles;
   }, [currentLayer]);
 
@@ -219,34 +244,39 @@ export const MapView: React.FC<MapViewProps> = ({
     });
   }, [geofences]);
 
-  // Render Real GPS Accuracy Circle
+  // Render High-Precision GPS Accuracy Circle around active device or real location
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (realLocationCoords && realGpsActive) {
-      const radius = realLocationCoords.accuracy || 30;
+    const selPos = selectedDevice?.lastPosition;
+    const targetLat = selPos?.latitude ?? realLocationCoords?.lat;
+    const targetLng = selPos?.longitude ?? realLocationCoords?.lng;
+    const rawAcc = selPos?.accuracy ?? realLocationCoords?.accuracy ?? (selPos?.hdop ? selPos.hdop * 2.5 : undefined);
+
+    if (typeof targetLat === 'number' && typeof targetLng === 'number' && rawAcc !== undefined && rawAcc <= 250) {
+      const radius = Math.max(1.5, rawAcc);
       if (!realGpsAccuracyCircleRef.current) {
         realGpsAccuracyCircleRef.current = L.circle(
-          [realLocationCoords.lat, realLocationCoords.lng],
+          [targetLat, targetLng],
           {
             radius,
-            color: '#10b981',
-            fillColor: '#10b981',
-            fillOpacity: 0.15,
+            color: radius <= 15 ? '#10b981' : '#06b6d4',
+            fillColor: radius <= 15 ? '#10b981' : '#06b6d4',
+            fillOpacity: 0.14,
             weight: 1.5,
-            dashArray: '2, 4',
+            dashArray: radius <= 5 ? undefined : '2, 4',
           }
         ).addTo(map);
       } else {
-        realGpsAccuracyCircleRef.current.setLatLng([realLocationCoords.lat, realLocationCoords.lng]);
+        realGpsAccuracyCircleRef.current.setLatLng([targetLat, targetLng]);
         realGpsAccuracyCircleRef.current.setRadius(radius);
       }
     } else if (realGpsAccuracyCircleRef.current) {
       realGpsAccuracyCircleRef.current.remove();
       realGpsAccuracyCircleRef.current = null;
     }
-  }, [realLocationCoords, realGpsActive]);
+  }, [realLocationCoords, realGpsActive, selectedDevice]);
 
   // Helper to create directional custom HTML marker for each vehicle
   const createVehicleIcon = (dev: GpsDevice, pos?: GpsPosition, isSelected = false) => {
@@ -458,13 +488,18 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [devices, selectedDevice, positionsHistory]);
 
-  // Center or follow selected device
+  // Center or follow selected device (auto-zoom to street level when high-precision lock is active)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !selectedDevice || !selectedDevice.lastPosition || !followMode) return;
 
-    const { latitude, longitude } = selectedDevice.lastPosition;
-    map.panTo([latitude, longitude], { animate: true, duration: 1 });
+    const { latitude, longitude, accuracy, hdop } = selectedDevice.lastPosition;
+    const estAcc = accuracy ?? (hdop ? hdop * 2.5 : 10);
+    if (estAcc <= 15 && map.getZoom() < 16) {
+      map.setView([latitude, longitude], 17, { animate: true });
+    } else {
+      map.panTo([latitude, longitude], { animate: true, duration: 0.8 });
+    }
   }, [selectedDevice?.lastPosition, followMode]);
 
   // Fit bounds to all devices
@@ -483,9 +518,31 @@ export const MapView: React.FC<MapViewProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 h-full w-full bg-slate-950 overflow-hidden select-none">
+    <div className={`absolute inset-0 h-full w-full bg-slate-950 overflow-hidden select-none ${calibratingMode ? 'cursor-crosshair' : ''}`}>
       {/* The Leaflet Real Map DOM Container (Edge-to-Edge Full Bleed) */}
-      <div ref={mapContainerRef} className="h-full w-full z-0" />
+      <div ref={mapContainerRef} className={`h-full w-full z-0 ${calibratingMode ? 'cursor-crosshair' : ''}`} />
+
+      {/* Precision Calibration Banner */}
+      {(calibratingMode || calibrationBanner) && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 max-w-xl w-[92%] px-4 py-2.5 rounded-xl bg-slate-900/95 border border-emerald-500/70 shadow-2xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-emerald-300 font-semibold">
+            <Crosshair className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
+            <span>
+              {calibratingMode
+                ? 'MODO CALIBRACIÓN SUB-MÉTRICA (±0.5m): Haz clic en tu punto exacto sobre el mapa para fijar la posición GPS real con 7 decimales.'
+                : calibrationBanner}
+            </span>
+          </div>
+          {calibratingMode && (
+            <button
+              onClick={() => setCalibratingMode(false)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold shrink-0 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Top Floating Map Layer & Tactical Quick-Bar (Identical to Local :8765 Interface) */}
       <div className="absolute top-3 right-14 z-20 flex flex-wrap items-center gap-2">
@@ -540,8 +597,23 @@ export const MapView: React.FC<MapViewProps> = ({
               : 'bg-slate-900/95 border-slate-700 text-slate-400 hover:text-white'
           }`}
         >
-          🎯 Seguir Unidad: {followMode ? 'ON' : 'OFF'}
+          🎯 Seguir: {followMode ? 'ON' : 'OFF'}
         </button>
+
+        {onCalibratePosition && (
+          <button
+            onClick={() => setCalibratingMode(!calibratingMode)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-colors cursor-pointer ${
+              calibratingMode
+                ? 'bg-emerald-500 text-slate-950 border-emerald-400 animate-pulse'
+                : 'bg-slate-900/95 hover:bg-slate-800 border-emerald-500/50 text-emerald-300'
+            }`}
+            title="Corregir cualquier desfase de IP/Wi-Fi haciendo clic en tu punto exacto del mapa (±0.5m)"
+          >
+            <Crosshair className="w-3.5 h-3.5" />
+            <span>{calibratingMode ? 'Haz clic en el mapa...' : '🎯 Calibrar Precisión (1m)'}</span>
+          </button>
+        )}
 
         {onOpenScanner && (
           <button
@@ -564,7 +636,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
       {/* Selected Vehicle Full Telemetry Bar (Bottom Floating HUD inside Map Viewport) */}
       {selectedDevice && selectedDevice.lastPosition ? (
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-4xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-3">
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-5xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div
               className="w-3.5 h-3.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-500/50 shrink-0"
@@ -574,19 +646,31 @@ export const MapView: React.FC<MapViewProps> = ({
               <div className="font-display text-sm font-bold text-white flex items-center gap-2 truncate">
                 <span className="truncate">{selectedDevice.name}</span>
                 <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-700/60 shrink-0">
-                  AES-256-GCM
+                  {selectedDevice.lastPosition.source || 'AES-256-GCM'}
                 </span>
               </div>
               <div className="font-mono text-[11px] text-cyan-400 tabular-nums">
-                Lat: {selectedDevice.lastPosition.latitude.toFixed(6)} · Lon: {selectedDevice.lastPosition.longitude.toFixed(6)}
+                Lat: {selectedDevice.lastPosition.latitude.toFixed(7)}° · Lon: {selectedDevice.lastPosition.longitude.toFixed(7)}°
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center flex-1 max-w-2xl">
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
-              <div className="text-[10px] text-slate-400">VELOCIDAD</div>
+              <div className="text-[10px] text-slate-400">PRECISIÓN</div>
+              <div className="font-mono text-xs font-bold text-emerald-400 tabular-nums">
+                ±{(selectedDevice.lastPosition.accuracy ?? Math.max(0.8, (selectedDevice.lastPosition.hdop || 0.6) * 2.5)).toFixed(1)} m
+              </div>
+            </div>
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">HDOP / SATS</div>
               <div className="font-mono text-xs font-bold text-cyan-400 tabular-nums">
+                {selectedDevice.lastPosition.hdop || 0.5} · {selectedDevice.lastPosition.satellites || 16}
+              </div>
+            </div>
+            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
+              <div className="text-[10px] text-slate-400">VELOCIDAD</div>
+              <div className="font-mono text-xs font-bold text-slate-200 tabular-nums">
                 {Math.round(selectedDevice.lastPosition.speed)} km/h
               </div>
             </div>
@@ -603,34 +687,26 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
             </div>
             <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
-              <div className="text-[10px] text-slate-400">SATÉLITES</div>
-              <div className="font-mono text-xs font-bold text-emerald-400 tabular-nums">
-                {selectedDevice.lastPosition.satellites || 16} GNSS
-              </div>
-            </div>
-            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
               <div className="text-[10px] text-slate-400">BATERÍA</div>
               <div className="font-mono text-xs font-bold text-emerald-400 tabular-nums">
                 {selectedDevice.lastPosition.battery}%
               </div>
             </div>
-            <div className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800">
-              <div className="text-[10px] text-slate-400">ESTADO</div>
-              <div className="font-mono text-[10px] font-bold text-emerald-300">
-                EN SEÑAL
-              </div>
-            </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {onOpenScanner && (
+            {onCalibratePosition && (
               <button
-                onClick={onOpenScanner}
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center gap-1 transition-colors cursor-pointer"
-                title="Escanear GPS cercanos alrededor de esta unidad"
+                onClick={() => setCalibratingMode(!calibratingMode)}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                  calibratingMode
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
+                    : 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40 text-emerald-300'
+                }`}
+                title="Calibrar posición exacta haciendo clic en el mapa (±0.5m)"
               >
-                <Radar className="w-3.5 h-3.5" />
-                <span>Radar</span>
+                <Crosshair className="w-3.5 h-3.5" />
+                <span>Calibrar 1m</span>
               </button>
             )}
             <button

@@ -21,6 +21,8 @@ export interface GpsPosition {
   heading: number; // 0-360 degrees
   satellites: number;
   hdop: number;
+  accuracy?: number; // meters (horizontal accuracy radius)
+  source?: string; // e.g. GNSS-ALTA-PRECISION, CALIBRADO-EXACTO-1M, NMEA-SERIAL-HW
   battery: number; // 0-100%
   ignition: boolean;
   tamper: boolean;

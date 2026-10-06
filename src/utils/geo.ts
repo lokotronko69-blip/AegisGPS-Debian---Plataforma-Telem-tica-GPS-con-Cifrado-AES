@@ -103,5 +103,5 @@ export function formatSpeed(speedKmH: number): string {
 export function formatCoordinates(lat: number, lng: number): string {
   const latDir = lat >= 0 ? 'N' : 'S';
   const lngDir = lng >= 0 ? 'E' : 'W';
-  return `${Math.abs(lat).toFixed(5)}° ${latDir}, ${Math.abs(lng).toFixed(5)}° ${lngDir}`;
+  return `${Math.abs(lat).toFixed(7)}° ${latDir}, ${Math.abs(lng).toFixed(7)}° ${lngDir}`;
 }
